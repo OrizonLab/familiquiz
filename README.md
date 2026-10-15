@@ -2,6 +2,8 @@
 
 Le grand quiz de la famille : de 1 à 6 joueurs, de 7 ans à adulte, chacun reçoit des questions **adaptées à son âge** pour que tout le monde puisse gagner. En solo, chacun pour soi ou **Parents contre Enfants**.
 
+**▶️ Jouer en ligne : https://orizonlab.github.io/familiquiz/** (sur iPad : Safari → Partager → *Sur l'écran d'accueil*)
+
 ## ▶️ Lancer le jeu
 
 **Sur l'ordinateur :** double-cliquer sur `index.html` (Chrome, Edge ou Firefox).
