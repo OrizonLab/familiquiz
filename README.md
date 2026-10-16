@@ -25,7 +25,9 @@ Puis ouvrir l'adresse « Sur le réseau » affichée (ex. `http://192.168.1.20:8
 - Les joueurs, statistiques, badges et l'historique sont enregistrés **uniquement dans le navigateur de l'appareil** sur lequel on joue (l'iPad de la maison, par exemple). Ils ne sont jamais envoyés sur Internet.
 - Quelqu'un d'autre qui ouvre l'adresse du jeu obtient un jeu **vide**, avec ses propres profils sur son appareil. Il ne voit jamais les vôtres.
 - Chaque appareil a donc ses propres profils. Pour les copier d'un appareil à l'autre : *Réglages → Exporter* (un fichier `.json` que vous gardez), puis *Importer* sur l'autre appareil.
-- Le seul échange avec un service extérieur est le téléchargement de la police d'écriture chez Google Fonts : Google voit l'adresse IP de l'appareil, mais aucune donnée de jeu.
+- Le jeu ne contacte **aucun service extérieur** : pas de statistiques de visite, pas de publicité, et même la police d'écriture est hébergée avec le jeu. Seul l'hébergeur (GitHub) voit qu'un appareil télécharge le jeu, comme pour n'importe quel site.
+- **Sur un même appareil, chaque navigateur a ses propres profils.** Sur iPad, l'icône de l'écran d'accueil et Safari sont séparés : jouez toujours depuis l'icône.
+- **Effacer les données du navigateur efface les profils** : faites un export de temps en temps pour garder une sauvegarde.
 - Ce qui est public : le code du jeu et les questions (dépôt GitHub). Rien de personnel.
 
 **Faut-il un compte ?** Pas pour protéger les profils, puisqu'ils ne quittent jamais l'appareil. Un compte ne servirait qu'à **synchroniser** les profils entre plusieurs appareils, ce qui demanderait un serveur, une base de données et une authentification : beaucoup plus de risques à sécuriser pour un gain faible.
@@ -47,6 +49,17 @@ Le jeu est une page web : il faut un appareil qui a un **navigateur web**, ou qu
 | **Ordinateur relié à la TV** | ✅ | Câble **HDMI** (ou adaptateur USB-C/HDMI pour l'iPad), ou recopie sans fil depuis Windows (*Windows + K*) vers les TV compatibles Miracast. |
 
 > Quand le jeu tourne **directement sur la TV**, les profils sont enregistrés **dans la TV** (pas sur l'iPad). Avec la recopie d'écran, ils restent sur l'iPad.
+
+**Jouer à la télécommande** (navigateur de la TV, Fire TV, ou clavier d'ordinateur) :
+
+| Touche | Action |
+|---|---|
+| Flèches ⬆️⬇️⬅️➡️ | déplacer la sélection (contour doré) vers le bouton voisin |
+| **OK** / Entrée | valider le bouton sélectionné (réponse, « Suivant »…) |
+| **Retour** | revenir à l'écran précédent ; pendant une question : **pause** (Retour à nouveau pour reprendre) |
+| Lecture/Pause | mettre la partie en pause |
+
+Après chaque réponse, la sélection se place sur « Question suivante » : un simple **OK** enchaîne. Les touches Retour des TV Samsung (Tizen), LG (webOS), Android TV et Fire TV sont reconnues. Sur certaines TV, la télécommande pilote une flèche-pointeur au lieu des flèches : on clique alors directement sur les boutons.
 
 ## 📱 Installer sur iPad / iPhone
 
@@ -127,6 +140,7 @@ index.html              page du jeu
 manifest.webmanifest    description de l'application installable
 sw.js                   service worker (mode hors ligne) — généré par tools/build-sw.js
 icons/                  icônes de l'application
+fonts/                  police Fredoka (licence SIL OFL, fonts/OFL.txt), hébergée avec le jeu
 css/style.css           styles
 js/store.js             stockage local (joueurs, stats, historique, questions vues)
 js/engine.js            niveaux d'âge, difficulté adaptative, tirage, score

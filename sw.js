@@ -1,7 +1,6 @@
 /* Famili'Quiz — service worker (généré par tools/build-sw.js, ne pas modifier à la main) */
-const VERSION = '9e3ba70e46';
+const VERSION = '406337ad8f';
 const CACHE = 'familiquiz-' + VERSION;
-const FONTS = 'familiquiz-fonts';
 const FILES = ["./",
   "css/style.css",
   "data/categories.js",
@@ -27,6 +26,9 @@ const FILES = ["./",
   "data/questions/nature.js",
   "data/questions/sciences.js",
   "data/questions/sport.js",
+  "fonts/OFL.txt",
+  "fonts/fredoka-latin-ext.woff2",
+  "fonts/fredoka-latin.woff2",
   "icons/apple-touch-icon.png",
   "icons/icon-192.png",
   "icons/icon-512.png",
@@ -250,26 +252,16 @@ self.addEventListener('install', event => {
 
 self.addEventListener('activate', event => {
   event.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE && k !== FONTS).map(k => caches.delete(k)))
+    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
   ).then(() => self.clients.claim()));
 });
 
 // Fichiers du jeu : réseau d'abord (pour recevoir les mises à jour), cache si hors ligne.
-// Polices Google : cache d'abord.
+// Le jeu ne charge rien d'extérieur : les autres origines ne sont pas interceptées.
 self.addEventListener('fetch', event => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com') {
-    event.respondWith(caches.open(FONTS).then(async cache => {
-      const hit = await cache.match(req);
-      if (hit) return hit;
-      const res = await fetch(req);
-      if (res.ok || res.type === 'opaque') cache.put(req, res.clone());
-      return res;
-    }));
-    return;
-  }
   if (url.origin !== self.location.origin) return;
   event.respondWith((async () => {
     const cache = await caches.open(CACHE);

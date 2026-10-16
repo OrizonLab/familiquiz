@@ -89,6 +89,8 @@
   let actions = {}, modalActions = null, keyHandler = null, cleanups = [];
 
   function screen(cls, html, acts = {}, keys = null, opts = {}) {
+    // À la télécommande, on garde la sélection sur le même bouton quand l'écran se redessine.
+    const prev = usingKeys && app.contains(document.activeElement) ? focusKey(document.activeElement) : null;
     cleanups.forEach(f => f()); cleanups = [];
     closeModal();
     document.querySelectorAll('.zoom-overlay').forEach(z => z.remove());
@@ -97,6 +99,11 @@
     app.innerHTML = html;
     if (opts.anim !== false) { app.classList.add('screen'); app.style.animation = 'none'; void app.offsetHeight; app.style.animation = ''; }
     if (opts.anim !== false) window.scrollTo(0, 0);
+    if (usingKeys) {
+      // Même écran redessiné (anim: false) : on reste sur le même bouton ; nouvel écran : sélection par défaut.
+      const again = opts.anim === false && prev ? app.querySelector(prev) : null;
+      if (again && focusables().includes(again)) again.focus(); else focusDefault();
+    }
   }
   function later(fn, ms) {
     const id = setTimeout(fn, ms);
@@ -106,8 +113,13 @@
   function openModal(html, acts, opaque = false) {
     modalRoot.innerHTML = `<div class="overlay" ${opaque ? 'style="background:rgba(20,8,50,.97)"' : ''}>${html}</div>`;
     modalActions = acts;
+    if (usingKeys) focusDefault();
   }
-  function closeModal() { modalRoot.innerHTML = ''; modalActions = null; }
+  function closeModal() {
+    const had = !!modalActions;
+    modalRoot.innerHTML = ''; modalActions = null;
+    if (had && usingKeys) focusDefault();
+  }
   function confirmBox(text, onYes, onNo, yesLabel = 'Oui') {
     openModal(`<div class="modal"><h3>🤔 Es-tu sûr ?</h3><p style="text-align:center;font-size:1.1rem">${esc(text)}</p>
       <div class="actions"><button class="btn ghost" data-act="no">Non</button><button class="btn danger" data-act="yes">${esc(yesLabel)}</button></div></div>`,
@@ -123,14 +135,101 @@
     if (!el.dataset.quiet) Sound.play('click');
     fn(el, e);
   });
+  /* ----- Clavier et télécommande de TV ----- */
+  // Flèches : déplacer la sélection vers le bouton le plus proche dans cette direction.
+  // OK / Entrée : valider. Retour : écran précédent, ou pause pendant une question.
+  // Touches « Retour » : Échap, Retour arrière, GoBack / BrowserBack (Android TV, Fire TV),
+  // codes 10009 (Samsung Tizen) et 461 (LG webOS).
+  const ARROWS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
+  const isBack = e => ['Escape', 'Backspace', 'GoBack', 'BrowserBack'].includes(e.key) || e.keyCode === 10009 || e.keyCode === 461;
+  const isPauseKey = e => ['MediaPlayPause', 'Pause', 'MediaPause'].includes(e.key) || e.keyCode === 19;
+  const FOCUSABLE = 'button:not(:disabled), input:not([type=hidden]):not(.hidden), a[href]';
+  let usingKeys = false;
+
+  function setKeyMode(on) {
+    usingKeys = on;
+    document.body.classList.toggle('keynav', on);
+  }
+  document.addEventListener('pointerdown', () => setKeyMode(false), { capture: true });
+
+  // Sélecteur qui retrouve « le même » bouton après un nouveau rendu de l'écran.
+  function focusKey(el) {
+    if (!el || !el.dataset || !el.dataset.act) return null;
+    const extra = ['id', 'v', 'i', 'k', 'n'].find(k => el.dataset[k] !== undefined);
+    return `[data-act="${CSS.escape(el.dataset.act)}"]` + (extra ? `[data-${extra}="${CSS.escape(el.dataset[extra])}"]` : '');
+  }
+  const navRoot = () => modalRoot.firstElementChild || document.body;
+  function focusables() {
+    const root = navRoot();
+    return [...root.querySelectorAll(FOCUSABLE)].filter(el => {
+      if (root === document.body && modalRoot.contains(el)) return false;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 && getComputedStyle(el).visibility !== 'hidden';
+    });
+  }
+  // Sélection par défaut : bouton « suivant » du retour de réponse, réponse A, bouton principal, sinon le premier bouton.
+  function focusDefault() {
+    const root = navRoot();
+    const el = root.querySelector('.feedback .btn.primary') || root.querySelector('.ans:not(:disabled)')
+      || root.querySelector('.btn.primary:not(:disabled):not(.hidden)') || root.querySelector('.modal .btn.green, .modal .btn.danger')
+      || root.querySelector('.count-btn, .mode-card.on, .mode-card, .pcard')
+      || focusables().find(x => x.dataset.act !== 'back' && !x.closest('#sound-bar')) || focusables()[0];
+    if (el) el.focus();
+  }
+  function moveFocus(dir) {
+    const items = focusables(), cur = document.activeElement;
+    if (!items.includes(cur)) { focusDefault(); return; }
+    const a = cur.getBoundingClientRect();
+    const ax = a.left + a.width / 2, ay = a.top + a.height / 2;
+    let best = null, bestScore = Infinity;
+    items.forEach(el => {
+      if (el === cur) return;
+      const b = el.getBoundingClientRect();
+      const dx = b.left + b.width / 2 - ax, dy = b.top + b.height / 2 - ay;
+      let gap, side;
+      if (dir === 'right') { if (dx <= 1) return; gap = b.left - a.right; side = Math.abs(dy); }
+      else if (dir === 'left') { if (dx >= -1) return; gap = a.left - b.right; side = Math.abs(dy); }
+      else if (dir === 'down') { if (dy <= 1) return; gap = b.top - a.bottom; side = Math.abs(dx); }
+      else { if (dy >= -1) return; gap = a.top - b.bottom; side = Math.abs(dx); }
+      const score = Math.max(0, gap) + side * 2;
+      if (score < bestScore) { bestScore = score; best = el; }
+    });
+    if (best) { best.focus(); best.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); }
+    else if (dir === 'up' || dir === 'down') window.scrollBy({ top: (dir === 'down' ? 1 : -1) * innerHeight * 0.4, behavior: 'smooth' });
+  }
+
   document.addEventListener('keydown', e => {
-    if (e.target.matches && e.target.matches('input, textarea, select')) return;
+    const dir = ARROWS[e.key];
+    const t = e.target;
+    const inField = t && t.matches && t.matches('input, textarea, select');
+    if (dir || (isBack(e) && !inField)) setKeyMode(true);
+
+    // Champs de saisie : les flèches gardent leur rôle (curseur, curseur de volume, nombre) sauf pour en sortir.
+    if (inField) {
+      const native = t.type === 'number' ? dir === 'up' || dir === 'down' : dir === 'left' || dir === 'right';
+      if (dir && !native) { e.preventDefault(); moveFocus(dir); }
+      else if (e.key === 'Escape') t.blur();
+      return;
+    }
     if (modalActions) {
-      if (e.key === 'Escape' && modalActions.resume) modalActions.resume();
+      if (dir) { e.preventDefault(); moveFocus(dir); return; }
+      if (isBack(e)) {
+        e.preventDefault();
+        (modalActions.resume || modalActions.no || modalActions.cancel || closeModal)();
+      }
       return;
     }
     if (keyHandler && keyHandler(e) === true) return;
+    if (dir) { e.preventDefault(); moveFocus(dir); return; }
+    if (isBack(e)) {
+      const b = app.querySelector('[data-act="back"]');
+      if (b) { e.preventDefault(); b.click(); }
+      return;
+    }
     if (e.key === 'Enter') {
+      // Bouton sélectionné (télécommande, Tab) : le navigateur l'active lui-même.
+      const f = document.activeElement;
+      if (f && f !== document.body && f.matches('button, a[href]')) return;
       const b = app.querySelector('.btn.primary:not(:disabled):not(.hidden)');
       if (b) { e.preventDefault(); b.click(); }
     }
@@ -362,8 +461,8 @@
       go: () => (manual ? startGame(setup.selected.slice(), setup.manual.slice()) : drawScreen())
     }, e => {
       if (manual) return;
-      if (e.key === '+' || e.key === 'ArrowRight') { if (setup.themeCount < max) { setup.themeCount++; setupThemes(false); } return true; }
-      if (e.key === '-' || e.key === 'ArrowLeft') { if (setup.themeCount > 1) { setup.themeCount--; setupThemes(false); } return true; }
+      if (e.key === '+') { if (setup.themeCount < max) { setup.themeCount++; setupThemes(false); } return true; }
+      if (e.key === '-') { if (setup.themeCount > 1) { setup.themeCount--; setupThemes(false); } return true; }
     }, { anim });
   }
 
@@ -401,6 +500,7 @@
     const done = () => {
       document.getElementById('skipBtn').classList.add('hidden');
       document.getElementById('goBtn').classList.remove('hidden');
+      if (usingKeys) document.getElementById('goBtn').focus();
     };
     const spin = () => {
       if (skipped) return;
@@ -560,6 +660,7 @@
         document.body.appendChild(z);
       }
     }, e => {
+      if (ARROWS[e.key]) return; // flèches : passer d'une réponse à l'autre (télécommande)
       const k = e.key.toLowerCase();
       const idx = { '1': 0, '2': 1, '3': 2, '4': 3, a: 0, b: 1, c: 2, d: 3 }[k];
       if (idx !== undefined && !T.locked && idx < q.answers.length) {
@@ -567,7 +668,7 @@
         if (b && !b.disabled) answer(idx);
         return true;
       }
-      if ((k === 'p' || k === 'escape') && !T.locked) { pauseGame(); return true; }
+      if (k === 'p' || isBack(e) || isPauseKey(e)) { e.preventDefault(); pauseGame(); return true; }
       if ((k === 'enter' || k === ' ') && T.locked) { e.preventDefault(); nextQuestion(); return true; }
       return true;
     }, { anim: T.i === 0 });
@@ -699,6 +800,7 @@
       <div class="fb-actions"><button class="btn primary has-bar" data-act="next">${last ? 'Fin de la série 🏁' : 'Question suivante ▶'}
         ${S.autoNext ? `<span class="autobar" style="animation-duration:${autoMs}ms"></span>` : ''}</button></div>`;
     app.appendChild(div);
+    if (usingKeys) div.querySelector('.btn.primary').focus();
     T.canNext = true;
     if (T.paused) { const bar = div.querySelector('.autobar'); if (bar) bar.remove(); }
     else if (S.autoNext) T.autoId = later(nextQuestion, autoMs);
@@ -1286,6 +1388,7 @@
         <div class="card"><h3>🎭 Joker et astuces</h3><ul>
           <li>Le <b>joker 50/50</b> (une fois par série) enlève des mauvaises réponses.</li>
           <li>Au clavier : touches <b>1 2 3 4</b> ou <b>A B C D</b> pour répondre, <b>Entrée</b> pour continuer, <b>P</b> pour la pause.</li>
+          <li>📺 À la télécommande de TV : <b>flèches</b> pour choisir, <b>OK</b> pour valider, <b>Retour</b> pour revenir en arrière (ou mettre en pause pendant une question).</li>
           <li>Les questions déjà vues par la famille sont évitées le plus longtemps possible.</li>
           <li>Les plus jeunes ont du temps bonus pour lire, et les questions sont lues à voix haute pour les 7-9 ans (réglable).</li>
           <li>Questions photo : touche l’image pour l’agrandir.</li></ul></div>
