@@ -25,7 +25,7 @@ Puis ouvrir l'adresse « Sur le réseau » affichée (ex. `http://192.168.1.20:8
 - Les joueurs, statistiques, badges et l'historique sont enregistrés **uniquement dans le navigateur de l'appareil** sur lequel on joue (l'iPad de la maison, par exemple). Ils ne sont jamais envoyés sur Internet.
 - Quelqu'un d'autre qui ouvre l'adresse du jeu obtient un jeu **vide**, avec ses propres profils sur son appareil. Il ne voit jamais les vôtres.
 - Chaque appareil a donc ses propres profils. Pour les copier d'un appareil à l'autre : *Réglages → Exporter* (un fichier `.json` que vous gardez), puis *Importer* sur l'autre appareil.
-- Le jeu ne contacte **aucun service extérieur** : pas de statistiques de visite, pas de publicité, et même la police d'écriture est hébergée avec le jeu. Seul l'hébergeur (GitHub) voit qu'un appareil télécharge le jeu, comme pour n'importe quel site.
+- Le jeu ne contacte **aucun service extérieur** : pas de statistiques de visite, pas de publicité, et même la police d'écriture est hébergée avec le jeu. Seul l'hébergeur (GitHub) voit qu'un appareil télécharge le jeu, comme pour n'importe quel site. Deux exceptions, **uniquement si vous les activez** : la voix premium ElevenLabs et les téléphones-manettes (détails dans leurs sections).
 - **Sur un même appareil, chaque navigateur a ses propres profils.** Sur iPad, l'icône de l'écran d'accueil et Safari sont séparés : jouez toujours depuis l'icône.
 - **Effacer les données du navigateur efface les profils** : faites un export de temps en temps pour garder une sauvegarde.
 - Ce qui est public : le code du jeu et les questions (dépôt GitHub). Rien de personnel.
@@ -40,7 +40,7 @@ Le jeu est une page web : il faut un appareil qui a un **navigateur web**, ou qu
 
 | Équipement | Possible ? | Comment |
 |---|---|---|
-| **Apple TV** | ✅ par recopie d'écran | L'Apple TV n'a **pas de navigateur web** : on ne peut pas y installer le jeu. Mais on peut jouer sur l'**iPad** (ou l'iPhone) et l'afficher sur la TV : *Centre de contrôle → Recopie de l'écran → Apple TV*. Le son passe aussi par la TV. ⚠️ La télécommande de l'Apple TV ne pilote **pas** l'iPad : on joue sur la tablette, ou avec une **manette Bluetooth** appairée à l'iPad (voir ci-dessous). |
+| **Apple TV** | ✅ par recopie d'écran | L'Apple TV n'a **pas de navigateur web** : on ne peut pas y installer le jeu. Mais on peut jouer sur l'**iPad** (ou l'iPhone) et l'afficher sur la TV : *Centre de contrôle → Recopie de l'écran → Apple TV*. Le son passe aussi par la TV. ⚠️ La télécommande de l'Apple TV ne pilote **pas** l'iPad : on joue sur la tablette, avec une **manette Bluetooth** appairée à l'iPad, ou avec les **téléphones-manettes** (voir ci-dessous). |
 | **TV compatible AirPlay** (Samsung, LG, Sony, Philips récentes) | ✅ par recopie d'écran | Même principe qu'avec l'Apple TV, depuis l'iPad ou l'iPhone. |
 | **Chromecast / Google TV** | ✅ par diffusion | Depuis un **téléphone Android** : *Caster l'écran*. Depuis un **ordinateur** avec Chrome : menu ⋮ → *Caster…* → *Caster l'onglet*. |
 | **Android TV / Google TV** (jeu directement sur la TV) | ⚠️ possible mais moins pratique | Pas de navigateur fourni : il faut en installer un (ex. *TV Bro* depuis le Play Store). On joue avec la télécommande en mode « pointeur ». |
@@ -62,6 +62,26 @@ Le jeu est une page web : il faut un appareil qui a un **navigateur web**, ou qu
 **🎮 Manette de jeu Bluetooth** (Xbox, PlayStation, ou manette « MFi ») appairée à l'iPad dans *Réglages iOS → Bluetooth* : croix ou stick gauche pour choisir, **A / Croix** pour valider, **B / Rond** pour revenir, **Start / Options** pour la pause. Idéal avec la recopie d'écran sur Apple TV : tout se pilote depuis le canapé. (Touchez une fois l'écran au lancement pour activer le son.)
 
 Après chaque réponse, la sélection se place sur « Question suivante » : un simple **OK** enchaîne. Les touches Retour des TV Samsung (Tizen), LG (webOS), Android TV et Fire TV sont reconnues. Sur certaines TV, la télécommande pilote une flèche-pointeur au lieu des flèches : on clique alors directement sur les boutons.
+
+## 📲 Téléphones-manettes
+
+Le jeu s'affiche sur la TV (iPad en recopie d'écran, ordinateur, navigateur de la TV…) et **chacun répond sur son propre téléphone**. Rien à installer sur les téléphones : une simple page web.
+
+1. Sur le jeu : accueil → **📱 Téléphones-manettes**. Un **QR code** et un code (ex. `VSZ5-6YB8`) s'affichent.
+2. Sur chaque téléphone : viser le QR code avec l'appareil photo (ou ouvrir `…/manette.html` et taper le code).
+3. Choisir **son prénom** : quand c'est son tour, le téléphone vibre, affiche « Je suis prêt », puis la question, les réponses A/B/C/D, le chrono, le joker et la pause. Pendant le tour des autres, il affiche « regarde la télé ».
+4. Ou choisir **« Juste télécommande »** : des flèches + OK pour piloter les menus (comme une télécommande), et répondre pour les joueurs qui n'ont pas de téléphone.
+
+Règles : un téléphone ne peut répondre **qu'à ses propres questions** (ou à celles d'un joueur sans téléphone s'il est télécommande). Un même joueur ne peut être tenu que par un téléphone à la fois : si un autre le choisit, le premier en est averti et redevient télécommande. Jusqu'à 8 téléphones. Si un téléphone perd la connexion, il se reconnecte tout seul et retrouve son joueur. L'écran du jeu liste les téléphones connectés et permet d'en **déconnecter** un (✖). Le code change à chaque ouverture ; « Arrêter les manettes » coupe tout.
+
+**🔒 Confidentialité et sécurité**
+
+- **Mise en relation** : le service gratuit **PeerJS** (`0.peerjs.com`, logiciel libre) sert uniquement à « présenter » le téléphone au jeu à partir du code. Il voit les adresses IP des appareils et le code de session, **jamais le contenu du jeu**.
+- **Ensuite, les appareils se parlent directement** (WebRTC), avec un chiffrement de bout en bout obligatoire (DTLS) : questions, réponses et scores ne passent par aucun serveur. Pour trouver le chemin direct, le navigateur interroge un serveur **STUN** (Google) qui ne voit que l'adresse IP publique. Si les réseaux bloquent la connexion directe (rare à la maison), un relais **TURN** de PeerJS transmet les données, **toujours chiffrées** : il ne peut pas les lire.
+- Seuls passent : la liste des prénoms et avatars (pour choisir « qui es-tu ? »), les questions, les commandes (flèches, réponse A/B/C/D…) et le classement. **Jamais** les statistiques, l'historique, les réglages ni la clé ElevenLabs.
+- Les messages des téléphones sont traités comme non fiables : format vérifié, limite de 25 messages par seconde, et le téléphone n'affiche que du texte (jamais de code).
+- Le code de session (8 caractères, 31⁸ ≈ 850 milliards de combinaisons, tiré au hasard par le générateur cryptographique du navigateur) n'est valable que tant que l'écran du jeu reste ouvert. Une personne qui le connaîtrait pourrait au pire rejoindre la partie : elle apparaîtrait alors dans la liste des téléphones, où on la déconnecte d'un geste.
+- Sans Internet, cette fonction ne marche pas (le reste du jeu, si).
 
 ## 📱 Installer sur iPad / iPhone
 
@@ -179,6 +199,7 @@ Musique et bruitages **générés en direct** (Web Audio API, aucun fichier audi
 
 ```
 index.html              page du jeu
+manette.html            page des téléphones-manettes
 manifest.webmanifest    description de l'application installable
 sw.js                   service worker (mode hors ligne) — généré par tools/build-sw.js
 icons/                  icônes de l'application
@@ -191,6 +212,9 @@ js/progress.js          défis de la semaine et objectifs personnels
 js/eleven.js            voix premium ElevenLabs (optionnelle)
 js/audio.js             musique, bruitages, lecture vocale
 js/app.js               écrans et déroulement
+js/remote.js            téléphones-manettes, côté jeu (session PeerJS, droits de chaque téléphone)
+js/manette.js           téléphones-manettes, côté téléphone (css/manette.css)
+js/vendor/              PeerJS 1.5.4 et qrcode-generator 1.4.4 (licences MIT, js/vendor/LICENCES.txt)
 data/categories.js      liste des thèmes (nom, icône, couleurs)
 data/questions/*.js     questions texte (200 par thème)
 data/photos/*.js        questions photo

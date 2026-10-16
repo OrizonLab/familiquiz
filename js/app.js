@@ -120,6 +120,7 @@
       const again = opts.anim === false && prev ? app.querySelector(prev) : null;
       if (again && focusables().includes(again)) again.focus(); else focusDefault();
     }
+    syncRemote();
   }
   function later(fn, ms) {
     const id = setTimeout(fn, ms);
@@ -350,6 +351,7 @@
           <button class="btn big primary" data-act="play">🎮 Nouvelle partie</button>
           <button class="btn" data-act="players">👥 Joueurs & statistiques</button>
           <button class="btn" data-act="history">📜 Historique des parties</button>
+          <button class="btn" data-act="phones">📱 Téléphones-manettes${Remote.count() ? ` (${Remote.count()})` : ''}</button>
           <div class="row" style="flex-wrap:nowrap">
             <button class="btn" style="flex:1" data-act="settings">⚙️ Réglages</button>
             <button class="btn" style="flex:1" data-act="rules">❓ Règles</button>
@@ -358,8 +360,118 @@
         ${weeklyCard()}
         <div class="home-foot">${Engine.total} questions · ${Engine.cats.length} thèmes · ${plural(np, 'joueur')} enregistré${np > 1 ? 's' : ''}</div>
       </div>`,
-    { play: setupCount, players: playersScreen, history: historyScreen, settings: () => settingsScreen(), rules: rulesScreen });
+    { play: setupCount, players: playersScreen, history: historyScreen, settings: () => settingsScreen(), rules: rulesScreen, phones: () => phonesScreen() });
   }
+
+  /* ================= Téléphones-manettes ================= */
+  function phonesScreen(anim = true) {
+    setTint(null);
+    Remote.start();
+    const info = Remote.info();
+    let qr = '';
+    if (info.status === 'ready' && info.url && typeof qrcode !== 'undefined') {
+      const q = qrcode(0, 'M'); q.addData(info.url); q.make();
+      qr = q.createSvgTag({ cellSize: 6, margin: 2, scalable: true });
+    }
+    const players = Store.players();
+    const phoneLine = ph => {
+      const p = ph.player && players.find(x => x.id === ph.player);
+      return `<div class="phone-line">${p ? avatar(p, 'sm') : '<span class="emoji" style="font-size:1.6rem">🎮</span>'}
+        <span><b>Téléphone ${ph.n}</b><br><small class="trend">${p ? esc(p.name) + ' (joueur)' : 'télécommande'}</small></span>
+        <button class="btn small ghost-dark" data-act="kick" data-id="${esc(ph.id)}" aria-label="Déconnecter ce téléphone">✖</button></div>`;
+    };
+    screen('phones-screen', `
+      <div class="topbar"><button class="btn round ghost" data-act="back">←</button><h2>📱 Téléphones-manettes</h2></div>
+      <div class="phones">
+        <div class="card phones-qr">
+          ${info.status === 'ready'
+            ? `<div class="qr">${qr}</div><div class="join-code">${esc(info.code)}</div><small class="trend join-url">${esc(info.url)}</small>`
+            : info.status === 'error'
+              ? `<p class="center-txt">⚠️ Impossible d’ouvrir la session : ${esc(info.error)}.</p><button class="btn small primary" data-act="retry">Réessayer</button>`
+              : '<p class="center-txt">Ouverture de la session…</p>'}
+        </div>
+        <div class="card phones-side">
+          <h3>Comment faire ?</h3>
+          <ol class="steps">
+            <li>Ouvre l’<b>appareil photo</b> du téléphone et vise le QR code (ou va sur l’adresse et tape le code).</li>
+            <li>Choisis <b>ton prénom</b> : tu répondras à <b>tes</b> questions sur ton téléphone.</li>
+            <li>Ou choisis <b>« Juste télécommande »</b> pour piloter les menus avec les flèches.</li>
+          </ol>
+          <h3>Connectés (${info.phones.length})</h3>
+          ${info.phones.length ? info.phones.map(phoneLine).join('') : '<p class="trend">Aucun téléphone pour l’instant.</p>'}
+          <p class="trend">🔒 La mise en relation passe par le service gratuit PeerJS ; ensuite le jeu et les téléphones se parlent directement, de façon chiffrée. Le code change à chaque ouverture.</p>
+          <div class="row" style="margin-top:6px"><button class="btn small primary" data-act="back">✔ Terminé</button>
+            ${Remote.active() ? '<button class="btn small danger" data-act="stop">Arrêter les manettes</button>' : ''}</div>
+        </div>
+      </div>`,
+    {
+      back: home,
+      retry: () => { Remote.stop(); phonesScreen(false); },
+      kick: el => Remote.kick(el.dataset.id),
+      stop: () => { Remote.stop(); toast('Manettes arrêtées'); home(); }
+    }, null, { anim });
+  }
+  Remote.onChange(() => {
+    if (app.classList.contains('phones-screen')) phonesScreen(false);
+    else if (app.classList.contains('home-screen')) {
+      const b = app.querySelector('[data-act="phones"]');
+      if (b) b.textContent = '📱 Téléphones-manettes' + (Remote.count() ? ` (${Remote.count()})` : '');
+    }
+    syncRemote();
+  });
+
+  // Ce que les téléphones doivent afficher, d'après l'écran en cours du jeu.
+  function remoteState() {
+    const cls = app.className;
+    if (!G) return { view: 'menu' };
+    const who = p => ({ player: p.id, who: p.name, avatar: p.avatar });
+    if (cls.includes('turn-screen')) return Object.assign({ view: 'turn', theme: curCat().name }, who(curPlayer()));
+    if (cls.includes('question-screen') && T && T.q) {
+      if (T.locked) {
+        return Object.assign({ view: 'feedback', ok: !!(T.fb && T.fb.ok), timeout: !!(T.fb && T.fb.timeout), points: T.fb ? T.fb.points : 0,
+          good: T.fb ? T.fb.good : '', last: T.i + 1 >= G.perSeries }, who(T.p));
+      }
+      return Object.assign({
+        view: 'question', q: T.q.q, answers: T.q.answers.map(a => a.t), photo: !!T.q.img,
+        removed: [...app.querySelectorAll('.ans.removed')].map(b => +b.dataset.i),
+        left: T.timer.left, total: T.timer.total, running: !!T.timer.running && !T.paused, paused: !!T.paused,
+        joker: !!(S.jokers && T.joker), index: T.i + 1, count: G.perSeries
+      }, who(T.p));
+    }
+    if (cls.includes('result-screen') && G.lastSeries) return Object.assign({ view: 'series' }, G.lastSeries);
+    if (cls.includes('round-screen') || cls.includes('final-screen')) {
+      const rk = G.teams ? teamRanking().map(x => ({ name: x.t.name, avatar: x.t.icon, total: x.score, rank: x.rank }))
+        : ranking().map(x => ({ name: x.p.name, avatar: x.p.avatar, total: x.total, rank: x.rank }));
+      return { view: cls.includes('final') ? 'final' : 'round', ranking: rk };
+    }
+    return { view: 'menu' };
+  }
+  function syncRemote() { if (Remote.active() && Remote.count()) Remote.broadcast(remoteState()); }
+
+  // Commandes reçues des téléphones : chacune passe par les mêmes boutons que sur l'écran.
+  Remote.onCommand((ph, cmd) => {
+    const st = remoteState();
+    const allowed = !st.player || Remote.canAct(ph, st.player);
+    const click = sel => { const b = typeof sel === 'string' ? app.querySelector(sel) : sel; if (b && !b.disabled) b.click(); };
+    switch (cmd.t) {
+      case 'nav':
+        if (allowed || ['menu', 'round', 'final'].includes(st.view)) { setKeyMode(true); padPress(cmd.key); }
+        break;
+      case 'ready': if (st.view === 'turn' && allowed) click('[data-act="go"]'); break;
+      case 'answer': if (st.view === 'question' && allowed && !st.paused) click(`.ans[data-i="${cmd.i}"]`); break;
+      case 'joker': if (st.view === 'question' && allowed && !st.paused) click(document.getElementById('jokerBtn')); break;
+      case 'next':
+        if (!allowed) break;
+        if (st.view === 'feedback') click('.feedback [data-act="next"]');
+        else if (['series', 'round'].includes(st.view)) click('.btn.primary:not(:disabled):not(.hidden)');
+        break;
+      case 'pause':
+        if (st.view !== 'question' || !allowed) break;
+        if (T && T.paused && modalActions && modalActions.resume) modalActions.resume();
+        else if (T && !T.paused) pauseGame();
+        break;
+    }
+  });
 
   // Défis familiaux de la semaine (les mêmes pour toute la famille, renouvelés chaque lundi).
   function weeklyCard() {
@@ -793,6 +905,7 @@
       if (tm.left <= 0) { tm.left = 0; stopTimer(); drawTimer(); answer(-1); }
     };
     tm.iv = setInterval(tick, 50);
+    syncRemote();
   }
   function stopTimer() {
     if (T && T.timer) { T.timer.running = false; clearInterval(T.timer.iv); }
@@ -840,6 +953,7 @@
     r.bestStreak = Math.max(r.bestStreak, T.streak);
     r.levelBonus += sc.level;
     T.marks[T.i] = ok ? 'ok' : 'ko';
+    T.fb = { ok, timeout: i < 0, points: sc.total, good: q.answers.find(a => a.ok).t };
 
     app.querySelectorAll('.ans').forEach((b, k) => {
       b.disabled = true;
@@ -860,6 +974,7 @@
       Sound.play(i < 0 ? 'timeout' : 'wrong');
     }
     later(() => showFeedback(ok, i < 0, sc), 650);
+    syncRemote();
   }
 
   function showFeedback(ok, timeout, sc) {
@@ -906,6 +1021,7 @@
     });
     document.getElementById('jokerBtn').disabled = true;
     Sound.play('joker');
+    syncRemote();
   }
 
   function pauseGame() {
@@ -922,9 +1038,11 @@
         closeModal(); T.paused = false;
         if (!T.locked) startTimer();
         else if (T.canNext && S.autoNext) T.autoId = later(nextQuestion, 4000);
+        syncRemote();
       },
       quit: () => confirmBox('Quitter la partie en cours ? Les scores de cette partie ne seront pas enregistrés.', home, pauseGame, 'Quitter')
     }, true);
+    syncRemote();
   }
   document.addEventListener('visibilitychange', () => {
     if (!T || !T.timer) return;
@@ -940,6 +1058,7 @@
     const n = G.perSeries, c = T.correct, ratio = c / n;
     const stars = ratio >= 0.9 ? 3 : ratio >= 0.7 ? 2 : ratio >= 0.4 ? 1 : 0;
     G.res[p.id].series.push({ cat: cat.id, c, n, stars });
+    G.lastSeries = { player: p.id, who: p.name, avatar: p.avatar, c, n, points: T.points };
     const team = teamOf(p.id);
     const msg = [`Courage ${esc(p.name)}, ça ira mieux au prochain thème !`, `Pas mal, ${esc(p.name)} !`, `Très bien joué, ${esc(p.name)} !`, `Incroyable, ${esc(p.name)} !`][stars];
     const lastPlayer = G.turn + 1 >= G.players.length;

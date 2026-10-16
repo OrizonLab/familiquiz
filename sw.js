@@ -1,5 +1,5 @@
 /* Famili'Quiz — service worker (généré par tools/build-sw.js, ne pas modifier à la main) */
-const VERSION = '42a2cb87fe';
+const VERSION = '1e1fd9958b';
 const CACHE = 'familiquiz-' + VERSION;
 const FILES = ["./",
   "audio/voix/101jdwt.mp3",
@@ -2368,6 +2368,7 @@ const FILES = ["./",
   "audio/voix/zuqhe4.mp3",
   "audio/voix/zvrd4c.mp3",
   "audio/voix/zvx077.mp3",
+  "css/manette.css",
   "css/style.css",
   "data/categories.js",
   "data/photos/animaux.js",
@@ -2609,8 +2610,14 @@ const FILES = ["./",
   "js/badges.js",
   "js/eleven.js",
   "js/engine.js",
+  "js/manette.js",
   "js/progress.js",
+  "js/remote.js",
   "js/store.js",
+  "js/vendor/LICENCES.txt",
+  "js/vendor/peerjs.min.js",
+  "js/vendor/qrcode.js",
+  "manette.html",
   "manifest.webmanifest"];
 
 self.addEventListener('install', event => {
