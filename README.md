@@ -40,7 +40,7 @@ Le jeu est une page web : il faut un appareil qui a un **navigateur web**, ou qu
 
 | Équipement | Possible ? | Comment |
 |---|---|---|
-| **Apple TV** | ✅ par recopie d'écran | L'Apple TV n'a **pas de navigateur web** : on ne peut pas y installer le jeu. Mais on peut jouer sur l'**iPad** (ou l'iPhone) et l'afficher sur la TV : *Centre de contrôle → Recopie de l'écran → Apple TV*. Le son passe aussi par la TV. **C'est la meilleure solution** : l'iPad sert de manette, toute la famille voit la TV. |
+| **Apple TV** | ✅ par recopie d'écran | L'Apple TV n'a **pas de navigateur web** : on ne peut pas y installer le jeu. Mais on peut jouer sur l'**iPad** (ou l'iPhone) et l'afficher sur la TV : *Centre de contrôle → Recopie de l'écran → Apple TV*. Le son passe aussi par la TV. ⚠️ La télécommande de l'Apple TV ne pilote **pas** l'iPad : on joue sur la tablette, ou avec une **manette Bluetooth** appairée à l'iPad (voir ci-dessous). |
 | **TV compatible AirPlay** (Samsung, LG, Sony, Philips récentes) | ✅ par recopie d'écran | Même principe qu'avec l'Apple TV, depuis l'iPad ou l'iPhone. |
 | **Chromecast / Google TV** | ✅ par diffusion | Depuis un **téléphone Android** : *Caster l'écran*. Depuis un **ordinateur** avec Chrome : menu ⋮ → *Caster…* → *Caster l'onglet*. |
 | **Android TV / Google TV** (jeu directement sur la TV) | ⚠️ possible mais moins pratique | Pas de navigateur fourni : il faut en installer un (ex. *TV Bro* depuis le Play Store). On joue avec la télécommande en mode « pointeur ». |
@@ -58,6 +58,8 @@ Le jeu est une page web : il faut un appareil qui a un **navigateur web**, ou qu
 | **OK** / Entrée | valider le bouton sélectionné (réponse, « Suivant »…) |
 | **Retour** | revenir à l'écran précédent ; pendant une question : **pause** (Retour à nouveau pour reprendre) |
 | Lecture/Pause | mettre la partie en pause |
+
+**🎮 Manette de jeu Bluetooth** (Xbox, PlayStation, ou manette « MFi ») appairée à l'iPad dans *Réglages iOS → Bluetooth* : croix ou stick gauche pour choisir, **A / Croix** pour valider, **B / Rond** pour revenir, **Start / Options** pour la pause. Idéal avec la recopie d'écran sur Apple TV : tout se pilote depuis le canapé. (Touchez une fois l'écran au lancement pour activer le son.)
 
 Après chaque réponse, la sélection se place sur « Question suivante » : un simple **OK** enchaîne. Les touches Retour des TV Samsung (Tizen), LG (webOS), Android TV et Fire TV sont reconnues. Sur certaines TV, la télécommande pilote une flèche-pointeur au lieu des flèches : on clique alors directement sur les boutons.
 
@@ -78,9 +80,9 @@ node tools/build-sw.js
 ## 🎮 Déroulement d'une partie
 
 1. **Nombre de joueurs** (1 = entraînement solo, jusqu'à 6).
-2. **Qui joue ?** On choisit les profils existants (ou on en crée un : prénom, âge, avatar, couleur).
+2. **Qui joue ?** On choisit les profils existants (ou on en crée un : prénom, mois et année de naissance, avatar, couleur).
 3. **Mode de jeu** (à partir de 2 joueurs) : **chacun pour soi** ou **en équipes**.
-4. **Thèmes** : nombre de thèmes + tirage au sort animé (ou choix manuel), et **5, 8 ou 10 questions** par thème et par joueur.
+4. **Thèmes** : classement (équitable ou classique), nombre de thèmes + tirage au sort animé (ou choix manuel), et **5, 8 ou 10 questions** par thème et par joueur.
 5. Pour chaque thème, chaque joueur joue **sa série** à tour de rôle : compte à rebours, 3 ou 4 réponses, joker 50/50, anecdote « Le savais-tu ? ».
 6. Classement après chaque thème, puis **podium final**, trophées, **badges gagnés** et **détail des scores par thème**.
 
@@ -100,12 +102,24 @@ node tools/build-sw.js
 | 🚀 Aventurier | 13-16 ans |
 | 🎓 Expert | adultes |
 
-- L'âge est enregistré sous forme d'année de naissance : le niveau **évolue tout seul** quand l'enfant grandit.
+- L'âge est calculé à partir du **mois et de l'année de naissance** : le niveau **évolue tout seul** le mois de l'anniversaire (sans le mois, au 1er janvier).
 - **Difficulté adaptative** (par thème) : un joueur qui réussit très bien reçoit quelques questions du niveau au-dessus (bonus 💪 *Défi* +25 pts), un joueur en difficulté quelques questions plus faciles. Objectif : ~70 % de réussite pour chacun.
 - **Temps bonus** pour les plus jeunes (+5 s pour les 7-9 ans, +3 s pour les 10-12 ans).
 - **Lecture à voix haute** des questions pour les 7-9 ans (réglable : personne / 7-9 ans / tout le monde), avec une **voix naturelle enregistrée** (voir plus bas).
 
 ## ⭐ Points
+
+### ⚖️ Classement équitable (par défaut)
+
+Le jeu estime en continu la **vraie force** de chaque joueur dans chaque thème, sans plafond lié à l'âge (un adulte très fort dépasse le niveau maximum des questions, un enfant en difficulté peut descendre sous le niveau 1). Pour chaque question, il calcule la chance de réussite attendue **pour ce joueur** :
+
+- une bonne réponse vaut **environ 100 points** pour une question « à sa mesure » (70 % de chances), **plus** si elle était difficile pour lui, **moins** si elle était facile ;
+- la rapidité (jusqu'à +50) est pondérée de la même façon ;
+- en simulation, un enfant en difficulté, un enfant très fort, un adulte moyen et un adulte très fort gagnent tous **88 à 89 points par question en moyenne** (contre 42 à 167 en classement classique).
+
+C'est donc la performance **par rapport à son propre niveau** qui fait gagner, pas l'âge.
+
+### ⭐ Classement classique (au choix)
 
 - Bonne réponse : **100**
 - ⚡ Rapidité : jusqu'à **+50** (proportionnel au temps restant, donc équitable avec le temps bonus)
@@ -113,10 +127,13 @@ node tools/build-sw.js
 - 💪 Question défi : **+25** par niveau au-dessus de son âge
 - Mauvaise réponse / temps écoulé : 0 (rien n'est retiré)
 
-## 🏅 Badges et rangs
+## 🏅 Progression : badges, rangs, défis et objectifs
 
 - Chaque partie rapporte de l'**expérience** (points ÷ 20 + 10, +20 en cas de victoire). 9 rangs : 🐣 Apprenti → 🔎 Curieux → 💡 Malin → 🦊 Futé → 📚 Savant → 🎓 Érudit → 🧠 Génie → 👑 Grand Maître → 🌟 Légende.
-- **42 badges** à collectionner : participation, victoires (solo et en équipe), séries, sans-faute, réflexes, joker, questions défi, questions photo, un badge « expert » par thème, et quelques badges amusants (Couche-tard, Lève-tôt, Grande tablée…).
+- **46 badges** à collectionner : participation, victoires (solo et en équipe), séries, sans-faute, réflexes, joker, questions défi, questions photo, défis de la semaine, objectifs atteints, un badge « expert » par thème, et quelques badges amusants (Couche-tard, Lève-tôt, Grande tablée…).
+- **🗓️ Défis familiaux de la semaine** (sur l'écran d'accueil) : 3 défis tirés au sort chaque lundi, les mêmes sur tous les appareils (ex. « Réussir 80 bonnes réponses tous ensemble », « Jouer 6 thèmes différents »). Toutes les parties de la semaine les font avancer ; chaque défi réussi rapporte **+50 XP** à chaque joueur de la partie et un **trophée de famille**.
+- **🎯 Objectif personnel** (dans le profil) : chaque joueur choisit un défi parmi des propositions adaptées à son profil (son thème le plus faible, une série un peu plus longue que son record…). Il avance tout seul en jouant ; une fois atteint : **+100 XP**.
+- **🎁 Récompenses à débloquer** : 15 **avatars spéciaux** (🦔 🦦 🦒 🦓 🦩 🦚 🧝 🧞 🧜 🦹 🐉 👸 🤴 👑 🌟) et des **cadres d'avatar** (argent, or, arc-en-ciel animé) gagnés en montant de rang.
 - La collection (obtenus en doré, à débloquer en grisé avec la condition) est dans le **profil** de chaque joueur.
 
 ## 📷 Questions photo
@@ -170,6 +187,8 @@ css/style.css           styles
 js/store.js             stockage local (joueurs, stats, historique, questions vues)
 js/engine.js            niveaux d'âge, difficulté adaptative, tirage, score
 js/badges.js            badges et rangs d'expérience
+js/progress.js          défis de la semaine et objectifs personnels
+js/eleven.js            voix premium ElevenLabs (optionnelle)
 js/audio.js             musique, bruitages, lecture vocale
 js/app.js               écrans et déroulement
 data/categories.js      liste des thèmes (nom, icône, couleurs)
@@ -177,6 +196,7 @@ data/questions/*.js     questions texte (200 par thème)
 data/photos/*.js        questions photo
 img/<thème>/            images des questions photo
 tools/validate.js       vérification des banques de questions
+tools/test-store.js     tests automatiques : import de sauvegardes abîmées ou piégées, coupure d'écriture, âge
 tools/audit.js          détection des doublons et du biais « bonne réponse la plus longue »
 tools/build-sw.js       génération du service worker
 tools/make-icons.js     génération des icônes PNG
@@ -208,4 +228,5 @@ Puis vérifier :
 ```bash
 node tools/validate.js
 node tools/audit.js
+node tools/test-store.js
 ```

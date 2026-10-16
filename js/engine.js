@@ -31,7 +31,15 @@ const Engine = (() => {
   const countCat = id => [1, 2, 3, 4].reduce((n, l) => n + byCat[id][l].length, 0);
 
   /* ---------- Âge et niveau ---------- */
-  const ageOf = p => new Date().getFullYear() - p.birthYear;
+  // Âge exact au mois près : le niveau change le mois de l'anniversaire (et non au 1er janvier).
+  // Sans mois de naissance (anciens profils), on retombe sur la seule année.
+  function ageFromBirth(year, month) {
+    const now = new Date();
+    let a = now.getFullYear() - year;
+    if (month >= 1 && month <= 12 && now.getMonth() + 1 < month) a--;
+    return a;
+  }
+  const ageOf = p => ageFromBirth(p.birthYear, p.birthMonth);
   const ageLevel = age => (age <= 9 ? 1 : age <= 12 ? 2 : age <= 16 ? 3 : 4);
   const levelOf = p => ageLevel(ageOf(p));
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -55,6 +63,33 @@ const Engine = (() => {
     p.skill[catId] = clamp(r + 0.25 * ((ok ? 1 : 0) - expected), lo, hi);
     return p.skill[catId];
   }
+  /* ---------- Classement équitable ----------
+   * « rating » : estimation sans plafond de la force réelle du joueur dans un thème (0 à 6), alors que
+   * « skill » reste bornée autour de son âge pour choisir les questions. Un adulte très fort dépasse donc 4,
+   * un enfant en difficulté descend sous 1, et la probabilité de réussite attendue reste juste pour tous. */
+  const expect = (r, qLevel) => 1 / (1 + Math.exp(-2.2 * (r - qLevel + 0.4)));
+  function rating(p, catId) {
+    const r = p.rating && p.rating[catId];
+    return typeof r === 'number' ? r : skill(p, catId);
+  }
+  function updateRating(p, catId, qLevel, ok) {
+    const r = rating(p, catId);
+    p.rating = p.rating || {};
+    p.rating[catId] = clamp(r + 0.25 * ((ok ? 1 : 0) - expect(r, qLevel)), 0, 6);
+  }
+  // Chance de réussite attendue pour ce joueur sur cette question (avant qu'il réponde).
+  const expected = (p, catId, qLevel) => expect(rating(p, catId), qLevel);
+  // Points équitables : 100 (+ jusqu'à 50 de rapidité) quand la chance de réussite attendue est de 70 %,
+  // davantage si la question était difficile POUR CE JOUEUR, moins si elle était facile. La rapidité est pondérée
+  // de la même façon. En moyenne, chacun gagne donc autant en jouant « à son niveau », quel que soit son âge.
+  function fairScore({ ok, e, timeLeft, timeTotal }) {
+    if (!ok) return { total: 0, base: 0, speed: 0, streak: 0, level: 0, e };
+    const w = 1 / clamp(e, 0.15, 0.97);
+    const base = Math.round(70 * w);
+    const speed = Math.round(35 * clamp(timeLeft / timeTotal, 0, 1) * w);
+    return { base, speed, streak: 0, level: 0, total: base + speed, e };
+  }
+
   function sampleLevel(r) {
     const base = Math.floor(r);
     return clamp(base + (Math.random() < r - base ? 1 : 0), 1, 4);
@@ -122,7 +157,7 @@ const Engine = (() => {
 
   return {
     CATS, LEVELS, cats, cat, countCat, total, photos,
-    ageOf, ageLevel, levelOf, skill, updateSkill,
+    ageOf, ageFromBirth, ageLevel, levelOf, skill, updateSkill, rating, updateRating, expected, fairScore,
     pickQuestion, shuffle, rand, timeFor, score, clamp
   };
 })();

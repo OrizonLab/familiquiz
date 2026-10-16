@@ -14,7 +14,14 @@
 
   /* ================= Outils ================= */
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const avatar = (p, size = '') => `<span class="avatar ${size} emoji" style="--pc:${/^#[0-9a-f]{3,8}$/i.test(p.color) ? p.color : "#8b5cf6"}">${esc(p.avatar)}</span>`;
+  // Cadre d'avatar gagné avec le rang : argent (Futé), or (Érudit), arc-en-ciel (Grand Maître).
+  const frameOf = p => {
+    const xp = p && p.stats && p.stats.xp;
+    if (!xp) return '';
+    const r = Badges.rankOf(xp).index;
+    return r >= 7 ? 'frame-rainbow' : r >= 5 ? 'frame-gold' : r >= 3 ? 'frame-silver' : '';
+  };
+  const avatar = (p, size = '') => `<span class="avatar ${size} ${frameOf(p)} emoji" style="--pc:${/^#[0-9a-f]{3,8}$/i.test(p.color) ? p.color : "#8b5cf6"}">${esc(p.avatar)}</span>`;
   const catVars = c => `--t1:${c.c1};--t2:${c.c2}`;
   const pct = (a, b) => (b ? Math.round((100 * a) / b) : 0);
   const plural = (n, w) => `${n} ${w}${n > 1 ? 's' : ''}`;
@@ -244,6 +251,44 @@
     }
   });
 
+  /* ----- Manette de jeu Bluetooth (Xbox, PlayStation, MFi…) ----- */
+  // Croix directionnelle ou stick gauche : déplacer la sélection · A / Croix : valider · B / Rond : retour ·
+  // Start / Options : pause. Pratique quand l'iPad est recopié sur une Apple TV : la manette appairée à l'iPad
+  // sert de télécommande (la télécommande de l'Apple TV, elle, ne peut pas piloter l'iPad).
+  const PAD_BUTTONS = { 12: 'ArrowUp', 13: 'ArrowDown', 14: 'ArrowLeft', 15: 'ArrowRight', 0: 'Enter', 1: 'Escape', 9: 'p' };
+  const padHeld = {};
+  let padTimer = null;
+  function padPress(key) {
+    if (key === 'Enter') {
+      const f = document.activeElement;
+      if (f && f !== document.body && f.matches('button, a[href]') && !f.disabled) { f.click(); return; }
+    }
+    document.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+  }
+  function pollPads() {
+    const pads = [...(navigator.getGamepads ? navigator.getGamepads() : [])].filter(Boolean);
+    if (!pads.length) { clearInterval(padTimer); padTimer = null; return; }
+    const now = performance.now(), down = new Set();
+    pads.forEach(gp => {
+      Object.entries(PAD_BUTTONS).forEach(([b, key]) => { if (gp.buttons[b] && gp.buttons[b].pressed) down.add(key); });
+      const [x = 0, y = 0] = gp.axes;
+      if (y < -0.6) down.add('ArrowUp');
+      if (y > 0.6) down.add('ArrowDown');
+      if (x < -0.6) down.add('ArrowLeft');
+      if (x > 0.6) down.add('ArrowRight');
+    });
+    down.forEach(key => {
+      const h = padHeld[key];
+      if (!h) { padHeld[key] = { since: now, last: now }; setKeyMode(true); padPress(key); }
+      else if (key.startsWith('Arrow') && now - h.since > 450 && now - h.last > 160) { h.last = now; padPress(key); } // défilement en maintenant
+    });
+    Object.keys(padHeld).forEach(k => { if (!down.has(k)) delete padHeld[k]; });
+  }
+  window.addEventListener('gamepadconnected', () => {
+    if (!padTimer) padTimer = setInterval(pollPads, 40);
+    toast('🎮 Manette connectée : croix pour choisir, A pour valider, B pour revenir');
+  });
+
   /* ================= Audio : déblocage et musique ================= */
   let unlocked = false, wantMusic = 'menu';
   function music(name) {
@@ -310,9 +355,25 @@
             <button class="btn" style="flex:1" data-act="rules">❓ Règles</button>
           </div>
         </div>
+        ${weeklyCard()}
         <div class="home-foot">${Engine.total} questions · ${Engine.cats.length} thèmes · ${plural(np, 'joueur')} enregistré${np > 1 ? 's' : ''}</div>
       </div>`,
     { play: setupCount, players: playersScreen, history: historyScreen, settings: () => settingsScreen(), rules: rulesScreen });
+  }
+
+  // Défis familiaux de la semaine (les mêmes pour toute la famille, renouvelés chaque lundi).
+  function weeklyCard() {
+    const w = Progress.current();
+    const allDone = w.challenges.every(c => c.done);
+    return `<div class="weekly">
+      <div class="weekly-head"><b>🗓️ Défis de la semaine</b>
+        <small>${allDone ? 'Bravo, tous réussis ! 🎉' : w.daysLeft > 1 ? `encore ${w.daysLeft} jours` : 'dernier jour !'} · 🏆 ${w.trophies} trophée${w.trophies > 1 ? 's' : ''} de famille</small></div>
+      ${w.challenges.map(c => `<div class="weekly-row ${c.done ? 'done' : ''}">
+        <span class="emoji">${c.done ? '✅' : c.icon}</span><span class="weekly-txt">${esc(c.text)}</span>
+        <div class="weekly-bar"><i style="width:${Math.round(100 * c.value / c.target)}%"></i></div>
+        <span class="weekly-val">${c.value}/${c.target}</span></div>`).join('')}
+      <small class="weekly-foot">Chaque défi réussi rapporte +${Progress.XP_WEEKLY} XP à chaque joueur de la partie.</small>
+    </div>`;
   }
 
   /* ================= Préparation de la partie ================= */
@@ -446,6 +507,11 @@
       <div class="topbar"><button class="btn round ghost" data-act="back">←</button><h2>Les thèmes</h2></div>
       <div class="opt-block"><label class="lbl">Questions par thème pour chaque joueur</label>
         <div class="seg">${[5, 8, 10].map(v => `<button class="${setup.perSeries === v ? 'on' : ''}" data-act="per" data-v="${v}">${v}</button>`).join('')}</div></div>
+      <div class="opt-block"><label class="lbl">Classement</label>
+        <div class="seg"><button class="${S.ranking === 'fair' ? 'on' : ''}" data-act="rank" data-v="fair">⚖️ Équitable</button><button class="${S.ranking === 'classic' ? 'on' : ''}" data-act="rank" data-v="classic">⭐ Classique</button></div>
+        <small class="opt-help">${S.ranking === 'fair'
+          ? 'Une bonne réponse rapporte plus quand la question était difficile pour ce joueur : petits et grands à égalité.'
+          : 'Points fixes pour tous, avec bonus de série et de question défi.'}</small></div>
       <div class="opt-block"><label class="lbl">Choix des thèmes</label>
         <div class="seg"><button class="${!manual ? 'on' : ''}" data-act="mode" data-v="random">🎲 Tirage au sort</button><button class="${manual ? 'on' : ''}" data-act="mode" data-v="manual">✋ On choisit</button></div></div>
       ${manual
@@ -459,6 +525,7 @@
     {
       back: () => (setup.count < 2 ? setupPlayers() : setup.gameMode === 'teams' ? setupTeams() : setupMode()),
       per: el => { setup.perSeries = +el.dataset.v; S.perSeries = setup.perSeries; Store.saveSettings(S); setupThemes(false); },
+      rank: el => { S.ranking = el.dataset.v; Store.saveSettings(S); setupThemes(false); },
       mode: el => { setup.mode = el.dataset.v; setupThemes(false); },
       pick: el => {
         const id = el.dataset.id, i = setup.manual.indexOf(id);
@@ -551,7 +618,7 @@
     }
     G = {
       id: Date.now().toString(36), date: Date.now(), cats: catIds, perSeries: setup.perSeries,
-      players, teams, mode: teams ? 'teams' : 'solo', round: 0, turn: 0, used: new Set(), res: {}, saved: false
+      players, teams, mode: teams ? 'teams' : 'solo', ranking: S.ranking, round: 0, turn: 0, used: new Set(), res: {}, saved: false
     };
     players.forEach(p => {
       G.res[p.id] = {
@@ -749,8 +816,12 @@
     const ok = i >= 0 && q.answers[i].ok;
     T.streak = ok ? T.streak + 1 : 0;
     T.bestStreak = Math.max(T.bestStreak, T.streak);
-    const sc = Engine.score({ ok, timeLeft: tm.left, timeTotal: tm.total, streak: T.streak, qLevel: q.l, ageLvl: Engine.levelOf(p) });
+    const e = Engine.expected(p, cat.id, q.l); // chance de réussite attendue pour CE joueur, avant sa réponse
+    const sc = G.ranking === 'fair'
+      ? Engine.fairScore({ ok, e, timeLeft: tm.left, timeTotal: tm.total })
+      : Engine.score({ ok, timeLeft: tm.left, timeTotal: tm.total, streak: T.streak, qLevel: q.l, ageLvl: Engine.levelOf(p) });
     Engine.updateSkill(p, cat.id, q.l, ok);
+    Engine.updateRating(p, cat.id, q.l, ok);
 
     const r = G.res[p.id], pc = r.perCat[cat.id];
     const before = r.total;
@@ -795,7 +866,8 @@
     const q = T.q;
     const good = q.answers.find(a => a.ok).t;
     const title = ok ? `✅ ${Engine.rand(OK_WORDS)}` : timeout ? '⏰ Temps écoulé !' : `❌ ${Engine.rand(KO_WORDS)}`;
-    const chips = ok ? [`Bonne réponse +${sc.base}`, sc.speed && `⚡ Rapidité +${sc.speed}`, sc.streak && `🔥 Série de ${T.streak} +${sc.streak}`, sc.level && `💪 Question défi +${sc.level}`].filter(Boolean) : [];
+    const fairLabel = sc.e === undefined ? '' : sc.e < 0.5 ? '⚖️ Question difficile pour toi : points en plus' : sc.e > 0.85 ? '⚖️ Question facile pour toi : points en moins' : '⚖️ Question à ta mesure';
+    const chips = ok ? [`Bonne réponse +${sc.base}`, sc.speed && `⚡ Rapidité +${sc.speed}`, sc.streak && `🔥 Série de ${T.streak} +${sc.streak}`, sc.level && `💪 Question défi +${sc.level}`, fairLabel].filter(Boolean) : [];
     const last = T.i + 1 >= G.perSeries;
     const autoMs = Math.min(13000, 5000 + (q.f || '').length * 40);
     const div = document.createElement('div');
@@ -993,12 +1065,22 @@
       winners = ranked.filter(x => x.rank === 1).map(x => x.p.id);
     }
     G.teamResult = teamResult;
-    G.newBadges = {}; G.rankUps = {};
+    G.newBadges = {}; G.rankUps = {}; G.goals = {};
     const hour = new Date().getHours();
+    // Défis familiaux de la semaine : la partie les fait avancer ; chaque défi réussi rapporte de l'XP à tous les joueurs.
+    G.weeklyDone = Progress.recordGame({
+      nPlayers: G.players.length, mode: G.mode, cats: G.cats,
+      players: G.players.map(p => {
+        const r = G.res[p.id];
+        return { correct: r.correct, perCat: r.perCat, bestStreak: r.bestStreak, photoOk: r.photoOk, challengeOk: r.challengeOk,
+          perfectSeries: r.series.filter(s => s.n >= 5 && s.c === s.n).length };
+      })
+    });
     G.players.forEach(p => {
       const r = G.res[p.id];
       const won = winners.includes(p.id);
       const st = (p.stats = Object.assign(Store.emptyStats(), p.stats || {}));
+      const before = Badges.rankOf(st.xp);
       st.games++;
       if (G.teams) { st.teamGames++; if (won) st.teamWins++; }
       else if (won) st.wins++;
@@ -1010,9 +1092,11 @@
         const pc = (st.perCat[cid] = st.perCat[cid] || { c: 0, n: 0, pts: 0 });
         pc.c += v.c; pc.n += v.n; pc.pts += v.pts;
       });
-      // Expérience, rang et badges
-      const before = Badges.rankOf(st.xp);
+      // Expérience (partie + défis de la semaine + objectif personnel), rang et badges
       st.xp += Badges.xpFor(r, won);
+      if (G.weeklyDone.length) { st.xp += Progress.XP_WEEKLY * G.weeklyDone.length; st.weeklyDone += G.weeklyDone.length; }
+      const goal = Progress.checkGoal(p);
+      if (goal) G.goals[p.id] = goal;
       const after = Badges.rankOf(st.xp);
       if (after.index > before.index) G.rankUps[p.id] = after;
       const fresh = Badges.evaluate(p, {
@@ -1023,7 +1107,7 @@
       if (Store.player(p.id)) Store.savePlayer(p);
     });
     Store.addGame({
-      id: G.id, date: G.date, cats: G.cats, perSeries: G.perSeries, winners, mode: G.mode,
+      id: G.id, date: G.date, cats: G.cats, perSeries: G.perSeries, winners, mode: G.mode, ranking: G.ranking,
       teams: teamResult && teamResult.map(x => ({ name: x.t.name, color: x.t.color, icon: x.t.icon, ids: x.t.ids, score: x.score, rank: x.rank })),
       players: ranked.map(x => ({
         id: x.p.id, name: x.p.name, avatar: x.p.avatar, color: x.p.color, level: Engine.levelOf(x.p),
@@ -1035,12 +1119,17 @@
   }
 
   function badgesSection() {
-    const list = G.players.filter(p => G.newBadges[p.id] || G.rankUps[p.id]);
-    if (!list.length) return '';
+    const list = G.players.filter(p => G.newBadges[p.id] || G.rankUps[p.id] || G.goals[p.id]);
+    const weekly = G.weeklyDone || [];
+    if (!list.length && !weekly.length) return '';
     return `<h3 class="section-title">🏅 Récompenses de la partie</h3>
-      <div class="new-badges">${list.map(p => `
+      <div class="new-badges">
+        ${weekly.map(ch => `<div class="nb-player weekly-done"><span class="emoji" style="font-size:1.6rem">🗓️</span>
+          <b>Défi de la semaine réussi :</b> <span class="emoji">${ch.icon}</span> ${esc(ch.text)} <span class="rankup">+${Progress.XP_WEEKLY} XP pour chacun</span></div>`).join('')}
+        ${list.map(p => `
         <div class="nb-player">${avatar(p, 'sm')}<b>${esc(p.name)}</b>
           ${G.rankUps[p.id] ? `<span class="rankup">⬆️ Nouveau rang : <span class="emoji">${G.rankUps[p.id].icon}</span> ${esc(G.rankUps[p.id].name)}</span>` : ''}
+          ${G.goals[p.id] ? `<span class="rankup">🎯 Objectif atteint : ${esc(G.goals[p.id].text)} (+${Progress.XP_GOAL} XP)</span>` : ''}
           ${(G.newBadges[p.id] || []).map(b => `<span class="badge-chip" title="${esc(b.desc)}"><span class="emoji">${Badges.iconOf(b)}</span>${esc(b.name)}</span>`).join('')}
         </div>`).join('')}</div>`;
   }
@@ -1082,7 +1171,7 @@
       teamIcon: G.teams ? teamOf(x.p.id).icon : null
     }));
     const solo = ranked[0];
-    const hasRewards = Object.keys(G.newBadges).length || Object.keys(G.rankUps).length;
+    const hasRewards = Object.keys(G.newBadges).length || Object.keys(G.rankUps).length || Object.keys(G.goals).length || G.weeklyDone.length;
     screen('final-screen', `
       <div class="result">
         <h2 class="title">🏆 ${title}</h2>
@@ -1117,15 +1206,33 @@
   }
 
   /* ================= Joueurs ================= */
+  const MONTHS = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+
+  // Récompenses à débloquer : avatars spéciaux gagnés en montant de rang (index de Badges.RANKS).
+  const SPECIAL_AVATARS = [
+    ['🦔', 1], ['🦦', 1], ['🦒', 2], ['🦓', 2], ['🦩', 3], ['🦚', 3], ['🧝', 4], ['🧞', 4],
+    ['🧜', 5], ['🦹', 5], ['🐉', 6], ['👸', 6], ['🤴', 6], ['👑', 7], ['🌟', 8]
+  ];
+  const rankIndex = p => Badges.rankOf(((p && p.stats) || {}).xp || 0).index;
+  function avatarChoices(p) {
+    const r = rankIndex(p);
+    return AVATARS.map(icon => ({ icon })).concat(SPECIAL_AVATARS.map(([icon, need]) => ({
+      icon, locked: r < need, hint: `Se débloque au rang ${Badges.RANKS[need].icon} ${Badges.RANKS[need].name}`
+    })));
+  }
   function playerForm(existing, onSave) {
+    const thisYear = new Date().getFullYear();
     const st = existing
-      ? { name: existing.name, avatar: existing.avatar, color: existing.color, age: Engine.ageOf(existing) }
-      : { name: '', avatar: Engine.rand(AVATARS), color: Engine.rand(COLORS), age: 10 };
+      ? { name: existing.name, avatar: existing.avatar, color: existing.color, birthYear: existing.birthYear, birthMonth: existing.birthMonth || 0 }
+      : { name: '', avatar: Engine.rand(AVATARS), color: Engine.rand(COLORS), birthYear: thisYear - 10, birthMonth: 0 };
+    const validYear = y => y >= thisYear - 110 && y <= thisYear - 4;
     const preview = () => {
-      const lv = Engine.LEVELS[Engine.ageLevel(st.age)];
+      const age = Engine.ageFromBirth(st.birthYear, st.birthMonth), lv = Engine.LEVELS[Engine.ageLevel(age)];
       document.getElementById('pfPrev').innerHTML = avatar(st, 'xl');
-      document.getElementById('pfAge').value = st.age;
-      document.getElementById('pfLvl').textContent = `→ ${lv.icon} Niveau ${lv.name} (${lv.range})`;
+      document.getElementById('pfYear').value = st.birthYear;
+      document.getElementById('pfMonth').value = st.birthMonth;
+      document.getElementById('pfLvl').textContent = `→ ${age} ans · ${lv.icon} Niveau ${lv.name} (${lv.range})`;
+      document.getElementById('pfHint').textContent = st.birthMonth ? '' : 'Avec le mois, le niveau change le jour de l’anniversaire (sinon au 1er janvier).';
       modalRoot.querySelectorAll('[data-act="av"]').forEach(b => b.classList.toggle('on', b.dataset.v === st.avatar));
       modalRoot.querySelectorAll('[data-act="col"]').forEach(b => b.classList.toggle('on', b.dataset.v === st.color));
     };
@@ -1133,33 +1240,40 @@
       <h3>${existing ? '✏️ Modifier le joueur' : '✨ Nouveau joueur'}</h3>
       <div class="preview-head" id="pfPrev"></div>
       <label class="field"><span>Prénom ou pseudo</span><input type="text" id="pfName" maxlength="16" value="${esc(st.name)}" placeholder="Ex. : Léa" autocomplete="off"></label>
-      <div class="field"><span>Âge</span>
-        <div class="age-row"><button class="btn small" data-act="ageDn">−</button>
-          <input type="number" id="pfAge" min="4" max="110" style="width:90px;font-size:1.6rem;text-align:center;border:3px solid #e3ddf5;border-radius:14px;padding:6px">
-          <button class="btn small" data-act="agePlus">+</button><button class="btn small" data-act="adult">Adulte</button>
-          <span class="lvl-preview" id="pfLvl"></span></div></div>
-      <div class="field"><span>Avatar</span><div class="pick-grid">${AVATARS.map(a => `<button class="emoji" data-act="av" data-v="${a}" data-quiet="1">${a}</button>`).join('')}</div></div>
+      <div class="field"><span>Né(e) en</span>
+        <div class="age-row">
+          <select id="pfMonth" class="voice-sel" aria-label="Mois de naissance"><option value="0">— mois —</option>${MONTHS.map((m, i) => `<option value="${i + 1}">${m}</option>`).join('')}</select>
+          <button class="btn small" data-act="yearDn" aria-label="Année précédente">−</button>
+          <input type="number" id="pfYear" min="${thisYear - 110}" max="${thisYear - 4}" aria-label="Année de naissance" style="width:110px;font-size:1.5rem;text-align:center;border:3px solid #e3ddf5;border-radius:14px;padding:6px">
+          <button class="btn small" data-act="yearUp" aria-label="Année suivante">+</button><button class="btn small" data-act="adult">Adulte</button>
+        </div>
+        <span class="lvl-preview" id="pfLvl"></span><small class="trend" id="pfHint"></small></div>
+      <div class="field"><span>Avatar</span><div class="pick-grid">${avatarChoices(existing).map(a => a.locked
+        ? `<button class="emoji locked" disabled title="${esc(a.hint)}">${a.icon}</button>`
+        : `<button class="emoji" data-act="av" data-v="${a.icon}" data-quiet="1">${a.icon}</button>`).join('')}</div>
+        ${avatarChoices(existing).some(a => a.locked) ? '<small class="trend">🔒 D’autres avatars se débloquent en gagnant des rangs.</small>' : ''}</div>
       <div class="field"><span>Couleur</span><div class="colors">${COLORS.map(c => `<button data-act="col" data-v="${c}" data-quiet="1" style="background:${c}"></button>`).join('')}</div></div>
       <div class="actions"><button class="btn ghost" data-act="cancel">Annuler</button><button class="btn green" data-act="save">💾 Enregistrer</button></div>
     </div>`, {
       av: el => { st.avatar = el.dataset.v; Sound.play('pop'); preview(); },
       col: el => { st.color = el.dataset.v; Sound.play('pop'); preview(); },
-      ageDn: () => { st.age = Engine.clamp(st.age - 1, 4, 110); preview(); },
-      agePlus: () => { st.age = Engine.clamp(st.age + 1, 4, 110); preview(); },
-      adult: () => { st.age = Math.max(st.age, 30); preview(); },
+      yearDn: () => { if (validYear(st.birthYear - 1)) st.birthYear--; preview(); },
+      yearUp: () => { if (validYear(st.birthYear + 1)) st.birthYear++; preview(); },
+      adult: () => { if (Engine.ageFromBirth(st.birthYear, st.birthMonth) < 18) st.birthYear = thisYear - 30; preview(); },
       cancel: closeModal,
       save: () => {
         st.name = document.getElementById('pfName').value.trim();
         if (!st.name) { toast('Il faut un prénom !'); document.getElementById('pfName').focus(); return; }
-        const age = parseInt(document.getElementById('pfAge').value, 10);
-        if (!(age >= 4 && age <= 110)) { toast('Âge entre 4 et 110 ans, s’il te plaît'); return; }
-        st.age = age;
+        const year = parseInt(document.getElementById('pfYear').value, 10);
+        if (!validYear(year)) { toast(`Année de naissance entre ${thisYear - 110} et ${thisYear - 4}, s’il te plaît`); return; }
+        st.birthYear = year;
+        st.birthMonth = parseInt(document.getElementById('pfMonth').value, 10) || 0;
         const dup = Store.players().find(x => x.name.toLowerCase() === st.name.toLowerCase() && (!existing || x.id !== existing.id));
         if (dup) { toast('Ce prénom existe déjà'); return; }
         let p;
         if (existing) {
           p = Store.player(existing.id);
-          Object.assign(p, { name: st.name, avatar: st.avatar, color: st.color, birthYear: new Date().getFullYear() - st.age });
+          Object.assign(p, { name: st.name, avatar: st.avatar, color: st.color, birthYear: st.birthYear, birthMonth: st.birthMonth });
           Store.savePlayer(p);
         } else {
           p = Store.createPlayer(st);
@@ -1169,10 +1283,11 @@
       }
     });
     const nameIn = document.getElementById('pfName');
-    document.getElementById('pfAge').addEventListener('input', e => {
+    document.getElementById('pfYear').addEventListener('input', e => {
       const v = parseInt(e.target.value, 10);
-      if (v >= 4 && v <= 110) { st.age = v; const lv = Engine.LEVELS[Engine.ageLevel(v)]; document.getElementById('pfLvl').textContent = `→ ${lv.icon} Niveau ${lv.name} (${lv.range})`; }
+      if (validYear(v)) { st.birthYear = v; const age = Engine.ageFromBirth(v, st.birthMonth), lv = Engine.LEVELS[Engine.ageLevel(age)]; document.getElementById('pfLvl').textContent = `→ ${age} ans · ${lv.icon} Niveau ${lv.name} (${lv.range})`; }
     });
+    document.getElementById('pfMonth').addEventListener('change', e => { st.birthMonth = parseInt(e.target.value, 10) || 0; preview(); });
     nameIn.addEventListener('keydown', e => { if (e.key === 'Enter') modalActions.save(); });
     preview();
     setTimeout(() => nameIn.focus(), 50);
@@ -1246,6 +1361,8 @@
           <small>${st.xp} XP${rk.next ? ` · encore ${rk.next.xp - st.xp} XP pour devenir <span class="emoji">${rk.next.icon}</span> ${rk.next.name}` : ' · rang maximum atteint !'}</small>
           <div class="xpbar"><i style="width:${Math.round(rk.progress * 100)}%"></i></div></div>
       </div>
+      ${goalCard(p)}
+      ${rewardsCard(p, rk)}
       <div class="tiles">
         ${tile(st.games, 'parties jouées')}${tile(st.wins + ' 🏆', 'victoires')}${tile(st.teamWins + ' 🤝', 'victoires en équipe')}
         ${tile(pct(st.correct, st.answered) + ' %', 'bonnes réponses')}${tile(st.bestScore, 'meilleur score')}${tile('🔥 ' + st.bestStreak, 'meilleure série')}
@@ -1273,8 +1390,49 @@
       back: playersScreen,
       edit: () => playerForm(p, () => profile(id)),
       del: () => confirmBox(`Supprimer ${p.name} et toutes ses statistiques ? (L’historique des parties est conservé.)`, () => { Store.deletePlayer(id); toast('Joueur supprimé'); playersScreen(); }, null, 'Supprimer'),
-      game: el => gameDetail(el.dataset.id, () => profile(id))
+      game: el => gameDetail(el.dataset.id, () => profile(id)),
+      goal: () => chooseGoal(p, () => profile(id))
     });
+  }
+
+  // Objectif personnel : progression et récompense.
+  function goalCard(p) {
+    const gp = Progress.goalProgress(p);
+    return `<div class="goal-card">
+      <div class="goal-top"><b>🎯 Mon objectif</b>${gp ? '<button class="btn small" data-act="goal">Changer</button>' : ''}</div>
+      ${gp ? `<div><span class="emoji">${gp.icon}</span> ${esc(gp.text)}</div>
+        <div class="goal-bar"><i style="width:${Math.round(100 * gp.value / gp.target)}%"></i></div>
+        <small class="trend">${gp.value} / ${gp.target} · récompense : +${Progress.XP_GOAL} XP</small>`
+      : `<small class="trend">Choisis un défi personnel : il avancera tout seul en jouant.</small>
+        <div><button class="btn small primary" data-act="goal">🎯 Choisir un objectif</button></div>`}
+    </div>`;
+  }
+  function chooseGoal(p, done) {
+    const list = Progress.suggestions(p);
+    openModal(`<div class="modal"><h3>🎯 Choisis ton objectif</h3>
+      <div class="goal-list">${list.map((g, i) => `<button data-act="pick" data-i="${i}"><span class="emoji">${g.icon}</span> ${esc(g.text)}</button>`).join('')}</div>
+      <div class="actions"><button class="btn ghost" data-act="cancel">Annuler</button></div></div>`, {
+      pick: el => {
+        Progress.setGoal(p, list[+el.dataset.i]);
+        Store.savePlayer(p); closeModal(); Sound.play('turn'); toast('Objectif enregistré 🎯');
+        done && done();
+      },
+      cancel: closeModal
+    });
+  }
+  // Récompenses à débloquer : avatars spéciaux et cadres, selon le rang.
+  function rewardsCard(p, rk) {
+    const FRAMES = [[3, 'Cadre argent'], [5, 'Cadre or'], [7, 'Cadre arc-en-ciel']];
+    const got = SPECIAL_AVATARS.filter(([, need]) => rk.index >= need).map(([a]) => a);
+    const gotFrames = FRAMES.filter(([need]) => rk.index >= need).map(([, n]) => n);
+    const next = [...SPECIAL_AVATARS.filter(([, need]) => need > rk.index).map(([a, need]) => ({ txt: `<span class="emoji">${a}</span>`, need })),
+      ...FRAMES.filter(([need]) => need > rk.index).map(([need, n]) => ({ txt: n, need }))]
+      .sort((a, b) => a.need - b.need).slice(0, 5);
+    return `<div class="goal-card"><b>🎁 Récompenses à débloquer</b>
+      ${got.length || gotFrames.length ? `<small class="trend">Déjà débloqué : <span class="emoji">${got.join(' ')}</span> ${gotFrames.join(', ')}</small>` : ''}
+      ${next.length ? `<div class="rewards-next">${next.map(x => `<span>${x.txt} au rang <span class="emoji">${Badges.RANKS[x.need].icon}</span> ${Badges.RANKS[x.need].name}</span>`).join('')}</div>`
+        : '<small class="trend">Tout est débloqué : bravo, légende ! 🌟</small>'}
+    </div>`;
   }
 
   /* ================= Historique ================= */
@@ -1477,6 +1635,7 @@
     document.getElementById('importFile').addEventListener('change', e => {
       const file = e.target.files[0];
       if (!file) return;
+      if (file.size > 10 * 1024 * 1024) { toast('Fichier trop gros pour être une sauvegarde Famili’Quiz'); e.target.value = ''; return; }
       const reader = new FileReader();
       reader.onload = () => {
         try {
@@ -1503,7 +1662,11 @@
           <p>Chaque joueur reçoit des questions de son niveau :</p>
           <ul>${[1, 2, 3, 4].map(l => `<li>${Engine.LEVELS[l].icon} <b>${Engine.LEVELS[l].name}</b> — ${Engine.LEVELS[l].range}</li>`).join('')}</ul>
           <p>Le jeu s’adapte aussi au fil des parties : si un joueur réussit très bien un thème, il reçoit des questions un peu plus difficiles (qui rapportent un bonus <b>💪 Défi</b>) ; s’il a du mal, des questions un peu plus faciles. Ainsi, un enfant de 8 ans peut battre un adulte !</p></div>
-        <div class="card"><h3>⭐ Les points</h3><ul>
+        <div class="card"><h3>⚖️ Classement équitable (par défaut)</h3>
+          <p>Le jeu apprend, partie après partie, la vraie force de chaque joueur dans chaque thème. Une bonne réponse rapporte
+          <b>environ 100 points</b> pour une question « à sa mesure », <b>plus</b> si elle était difficile pour lui, <b>moins</b> si elle était facile.
+          La rapidité (jusqu’à +50) suit la même règle. Résultat : un enfant et un adulte qui jouent chacun à leur niveau gagnent en moyenne autant de points.</p></div>
+        <div class="card"><h3>⭐ Classement classique (au choix)</h3><ul>
           <li>Bonne réponse : <b>100 points</b></li>
           <li>⚡ Rapidité : jusqu’à <b>+50</b> selon le temps restant</li>
           <li>🔥 Série : <b>+10</b> par bonne réponse d’affilée (max +50)</li>

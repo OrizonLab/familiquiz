@@ -68,6 +68,11 @@ const Badges = (() => {
       test: c => (c.st.perCat[cat] || {}).c >= SPECIALIST_GOAL
     })),
 
+    { id: 'defi-semaine', icon: '🗓️', name: 'Défi de la semaine', desc: 'Participer à un défi familial de la semaine réussi', test: c => c.st.weeklyDone >= 1 },
+    { id: 'pilier-famille', icon: '🏡', name: 'Pilier de la famille', desc: 'Participer à 10 défis de la semaine réussis', test: c => c.st.weeklyDone >= 10 },
+    { id: 'objectif', icon: '🎯', name: 'Objectif atteint', desc: 'Atteindre son objectif personnel', test: c => c.st.goalsDone >= 1 },
+    { id: 'perseverant', icon: '🧗', name: 'Persévérant', desc: 'Atteindre 5 objectifs personnels', test: c => c.st.goalsDone >= 5 },
+
     { id: 'couche-tard', icon: '🦉', name: 'Couche-tard', desc: 'Finir une partie après 21 h', test: c => c.g.hour >= 21 },
     { id: 'leve-tot', icon: '🐓', name: 'Lève-tôt', desc: 'Finir une partie avant 9 h', test: c => c.g.hour < 9 },
     { id: 'grande-tablee', icon: '🍽️', name: 'Grande tablée', desc: 'Jouer une partie à 6 joueurs', test: c => c.g.nPlayers >= 6 },
