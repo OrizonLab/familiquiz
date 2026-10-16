@@ -6,9 +6,11 @@ Le grand quiz de la famille : de 1 à 6 joueurs, de 7 ans à adulte, chacun reç
 
 ## ▶️ Lancer le jeu
 
-**Sur l'ordinateur :** double-cliquer sur `index.html` (Chrome, Edge ou Firefox).
+**Le plus simple :** ouvrir https://orizonlab.github.io/familiquiz/ dans le navigateur de n'importe quel appareil (ordinateur, tablette, téléphone).
 
-**Sur une tablette, un téléphone ou la TV** (même Wi-Fi), depuis l'ordinateur :
+**Sans Internet, sur l'ordinateur :** double-cliquer sur `index.html` (Chrome, Edge ou Firefox).
+
+**Sans Internet, sur les appareils de la maison** (même Wi-Fi), depuis l'ordinateur :
 
 ```bash
 node tools/serve.js
@@ -16,21 +18,43 @@ node tools/serve.js
 
 Puis ouvrir l'adresse « Sur le réseau » affichée (ex. `http://192.168.1.20:8080`) sur l'appareil.
 
-> Les joueurs, statistiques, badges et l'historique sont enregistrés **dans le navigateur** de l'appareil utilisé.
-> Pour les transférer : *Réglages → Exporter*, puis *Importer* sur l'autre appareil.
+## 🔒 Confidentialité : où sont les profils ?
+
+**Les profils ne sont pas partagés avec le monde entier.** Le site en ligne ne contient que le jeu (le programme, les questions, les images). Il n'a ni serveur ni base de données : il ne peut **rien recevoir ni stocker**.
+
+- Les joueurs, statistiques, badges et l'historique sont enregistrés **uniquement dans le navigateur de l'appareil** sur lequel on joue (l'iPad de la maison, par exemple). Ils ne sont jamais envoyés sur Internet.
+- Quelqu'un d'autre qui ouvre l'adresse du jeu obtient un jeu **vide**, avec ses propres profils sur son appareil. Il ne voit jamais les vôtres.
+- Chaque appareil a donc ses propres profils. Pour les copier d'un appareil à l'autre : *Réglages → Exporter* (un fichier `.json` que vous gardez), puis *Importer* sur l'autre appareil.
+- Le seul échange avec un service extérieur est le téléchargement de la police d'écriture chez Google Fonts : Google voit l'adresse IP de l'appareil, mais aucune donnée de jeu.
+- Ce qui est public : le code du jeu et les questions (dépôt GitHub). Rien de personnel.
+
+**Faut-il un compte ?** Pas pour protéger les profils, puisqu'ils ne quittent jamais l'appareil. Un compte ne servirait qu'à **synchroniser** les profils entre plusieurs appareils, ce qui demanderait un serveur, une base de données et une authentification : beaucoup plus de risques à sécuriser pour un gain faible.
+
+Pour **réserver l'accès au jeu lui-même** à la famille, la solution sûre est de ne pas programmer de mot de passe soi-même (un mot de passe dans une page web sans serveur se contourne facilement), mais de placer le site derrière un service d'accès professionnel, par exemple **Cloudflare Pages + Cloudflare Access** (gratuit jusqu'à 50 personnes) : seules les adresses e-mail autorisées reçoivent un code de connexion à usage unique.
+
+## 📺 Jouer sur la télévision
+
+Le jeu est une page web : il faut un appareil qui a un **navigateur web**, ou qui **recopie l'écran** d'un autre appareil sur la TV.
+
+| Équipement | Possible ? | Comment |
+|---|---|---|
+| **Apple TV** | ✅ par recopie d'écran | L'Apple TV n'a **pas de navigateur web** : on ne peut pas y installer le jeu. Mais on peut jouer sur l'**iPad** (ou l'iPhone) et l'afficher sur la TV : *Centre de contrôle → Recopie de l'écran → Apple TV*. Le son passe aussi par la TV. **C'est la meilleure solution** : l'iPad sert de manette, toute la famille voit la TV. |
+| **TV compatible AirPlay** (Samsung, LG, Sony, Philips récentes) | ✅ par recopie d'écran | Même principe qu'avec l'Apple TV, depuis l'iPad ou l'iPhone. |
+| **Chromecast / Google TV** | ✅ par diffusion | Depuis un **téléphone Android** : *Caster l'écran*. Depuis un **ordinateur** avec Chrome : menu ⋮ → *Caster…* → *Caster l'onglet*. |
+| **Android TV / Google TV** (jeu directement sur la TV) | ⚠️ possible mais moins pratique | Pas de navigateur fourni : il faut en installer un (ex. *TV Bro* depuis le Play Store). On joue avec la télécommande en mode « pointeur ». |
+| **TV connectée Samsung (Tizen) / LG (webOS)** | ⚠️ possible | Ouvrir l'adresse dans le navigateur intégré de la TV. Pratique avec la télécommande-pointeur LG (Magic Remote) ; plus lent avec les flèches. Les performances varient selon les modèles. |
+| **Fire TV (Amazon)** | ⚠️ possible | Navigateur *Silk*, avec un pointeur à la télécommande. |
+| **Ordinateur relié à la TV** | ✅ | Câble **HDMI** (ou adaptateur USB-C/HDMI pour l'iPad), ou recopie sans fil depuis Windows (*Windows + K*) vers les TV compatibles Miracast. |
+
+> Quand le jeu tourne **directement sur la TV**, les profils sont enregistrés **dans la TV** (pas sur l'iPad). Avec la recopie d'écran, ils restent sur l'iPad.
 
 ## 📱 Installer sur iPad / iPhone
 
 Famili'Quiz est une **application web installable** : icône sur l'écran d'accueil, plein écran, et **fonctionne hors ligne** une fois installée.
 
-Pour ça, le jeu doit être en ligne en **HTTPS** (exigence d'Apple pour le hors-ligne). Deux possibilités gratuites :
+Sur l'iPad : ouvrir https://orizonlab.github.io/familiquiz/ dans **Safari** → bouton **Partager** → **Sur l'écran d'accueil**. Lancer le jeu une première fois avec le Wi-Fi pour qu'il se mette en cache.
 
-- **GitHub Pages** : déposer le dossier dans un dépôt GitHub et activer *Settings → Pages*.
-- **Netlify / Cloudflare Pages** : glisser-déposer le dossier sur leur site.
-
-Ensuite, sur l'iPad : ouvrir l'adresse dans **Safari** → bouton **Partager** → **Sur l'écran d'accueil**.
-
-> Avec `node tools/serve.js` (adresse en `http://`), l'ajout à l'écran d'accueil marche aussi, mais seulement quand l'ordinateur est allumé et sans mode hors ligne.
+> L'installation hors ligne exige une adresse en **HTTPS** (c'est le cas de GitHub Pages). Avec `node tools/serve.js` (adresse en `http://`), l'ajout à l'écran d'accueil marche aussi, mais seulement quand l'ordinateur est allumé et sans mode hors ligne.
 
 Avant chaque mise en ligne, régénérer la liste des fichiers pour le mode hors ligne :
 
