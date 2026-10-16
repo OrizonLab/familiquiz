@@ -32,6 +32,15 @@
     document.getElementById('toast').appendChild(el);
     setTimeout(() => el.remove(), 2600);
   }
+  // ElevenLabs indisponible (crédits épuisés, clé refusée, pas d'Internet…) : la voix intégrée prend le relais.
+  let lastVoiceError = '';
+  Sound.onVoiceError(err => {
+    const msg = err && err.message ? err.message : 'erreur inconnue';
+    if (msg === lastVoiceError) return;
+    lastVoiceError = msg;
+    toast('Voix ElevenLabs indisponible (' + msg + ') : voix intégrée utilisée');
+  });
+
   let storageWarned = false;
   window.addEventListener('fq-storage-error', () => {
     if (storageWarned) return;
@@ -1296,12 +1305,61 @@
   }
 
   /* ================= Réglages ================= */
-  // Fait entendre la voix choisie (voix enregistrée, ou voix de l'appareil si device = true).
+  // Fait entendre la voix choisie (voix enregistrée, ElevenLabs, ou voix de l'appareil si device = true).
   function testVoice(device = false) {
     unlock();
     const info = Sound.voiceInfo();
-    if (!device && S.voiceMode === 'natural' && info.sample && Sound.hasClip(info.sample)) Sound.speak(info.sample);
+    if (!device && S.voiceMode === 'eleven' && Eleven.ready()) Sound.speak('Bonjour ! C’est moi qui lirai les questions à voix haute.');
+    else if (!device && S.voiceMode !== 'device' && info.sample && Sound.hasClip(info.sample)) Sound.speak(info.sample);
     else Sound.speak('Bonjour ! Voici la voix de l’appareil qui lira les questions.'); // pas d'enregistrement : voix de l'appareil
+  }
+
+  // Enregistre la clé ElevenLabs seulement si ElevenLabs l'accepte (test sur la liste des voix).
+  async function saveElevenKey() {
+    const input = document.getElementById('elKey');
+    const k = (input && input.value || '').trim();
+    if (input) input.value = '';
+    if (!/^[A-Za-z0-9_-]{20,200}$/.test(k)) { toast('Cette clé ne ressemble pas à une clé ElevenLabs'); return; }
+    Eleven.setKey(k);
+    try {
+      await Eleven.voices();
+      toast('Clé acceptée et enregistrée sur cet appareil ✔');
+    } catch (err) {
+      if (err.status === 401 || err.status === 403) {
+        Eleven.setKey('');
+        toast('Clé refusée par ElevenLabs : ' + err.message);
+      } else {
+        toast('Clé enregistrée, mais ElevenLabs ne répond pas : ' + err.message);
+      }
+    }
+    settingsScreen(false);
+  }
+  // Charge (sans bloquer l'écran) la liste des voix et les crédits restants du compte ElevenLabs.
+  function loadElevenInfo() {
+    const sel = document.getElementById('elVoiceSel');
+    if (sel) {
+      Eleven.voices().then(list => {
+        if (!document.body.contains(sel)) return;
+        sel.innerHTML = `<option value="">— Choisir une voix —</option>` + list.map(v =>
+          `<option value="${esc(v.id)}" ${v.id === S.elVoice ? 'selected' : ''}>${esc(v.name)}${v.lang ? ' (' + esc(v.lang) + ')' : ''}</option>`).join('');
+      }).catch(err => {
+        if (document.body.contains(sel)) sel.innerHTML = `<option value="${esc(S.elVoice)}">Voix indisponibles : ${esc(err.message)}</option>`;
+      });
+      sel.addEventListener('change', () => {
+        S.elVoice = sel.value; S.elVoiceName = sel.selectedOptions[0] ? sel.selectedOptions[0].textContent : '';
+        Store.saveSettings(S); Sound.configure(S);
+        if (S.elVoice) testVoice();
+      });
+    }
+    const q = document.getElementById('elQuota');
+    if (q) {
+      Promise.all([Eleven.quota().catch(() => null), Eleven.cacheCount()]).then(([info, n]) => {
+        if (!document.body.contains(q)) return;
+        const fmt = x => Number(x).toLocaleString('fr-FR');
+        q.textContent = (info ? `${fmt(info.used)} / ${fmt(info.limit)} caractères utilisés ce mois-ci` : 'Crédits non lisibles (droit « User » non accordé à la clé)')
+          + ` · ${fmt(n)} lecture${n > 1 ? 's' : ''} déjà en mémoire sur cet appareil (gratuites)`;
+      });
+    }
   }
 
   function settingsScreen(anim = true) {
@@ -1310,6 +1368,7 @@
     const seg = (key, values, labels) => `<div class="seg">${values.map((v, i) => `<button class="${S[key] === v ? 'on' : ''}" data-act="set" data-k="${key}" data-v="${v}">${labels ? labels[i] : v}</button>`).join('')}</div>`;
     const row = (ic, title, desc, ctrl) => `<div class="set"><span class="emoji" style="font-size:1.8rem">${ic}</span><div class="txt"><b>${title}</b><small>${desc}</small></div>${ctrl}</div>`;
     const voiceInfo = Sound.voiceInfo(), voices = Sound.listVoices();
+    const elOn = HAS_TTS && S.voiceMode === 'eleven', elKey = !!Eleven.getKey();
     // Les voix de l'appareil arrivent parfois après l'ouverture de l'écran : on le redessine alors.
     Sound.onVoicesChanged(() => { if (app.classList.contains('settings-screen')) settingsScreen(false); });
     screen('settings-screen', `
@@ -1326,9 +1385,22 @@
         ${row('❓', 'Questions par série', 'Nombre de questions par thème et par joueur', seg('perSeries', [5, 8, 10]))}
         ${row('🎭', 'Joker 50/50', 'Un joker par série : retire des mauvaises réponses', sw('jokers', S.jokers))}
         ${HAS_TTS ? row('🗣️', 'Lecture à voix haute', 'La question et les réponses sont lues, le chrono démarre ensuite', seg('tts', ['off', 'young', 'all'], ['Non', '7-9 ans', 'Tous'])) : ''}
-        ${HAS_TTS ? row('🎙️', 'Voix', voiceInfo.natural
-          ? 'Naturelle : voix enregistrée intégrée au jeu (questions des 7-9 ans). Les autres questions utilisent la voix de l’appareil.'
-          : 'Voix de l’appareil', seg('voiceMode', ['natural', 'device'], ['Naturelle', 'Appareil'])) : ''}
+        ${HAS_TTS ? row('🎙️', 'Voix', S.voiceMode === 'eleven'
+          ? 'ElevenLabs : voix premium avec votre propre compte (clé API). En cas de souci, la voix intégrée prend le relais.'
+          : voiceInfo.natural
+            ? 'Naturelle : voix enregistrée intégrée au jeu (questions des 7-9 ans). Les autres questions utilisent la voix de l’appareil.'
+            : 'Voix de l’appareil', seg('voiceMode', ['natural', 'eleven', 'device'], ['Naturelle', 'ElevenLabs', 'Appareil'])) : ''}
+        ${elOn ? row('🔑', 'Clé API ElevenLabs',
+          'Reste uniquement sur cet appareil : jamais exportée ni publiée. Conseil : créez dans ElevenLabs une clé limitée à « Text to Speech » (avec « Voices » et « User » en lecture seule) et un plafond de crédits.',
+          elKey
+            ? `<span class="key-mask">${esc(Eleven.masked())}</span><button class="btn small danger" data-act="elDelKey">Supprimer la clé</button>`
+            : `<input type="password" id="elKey" class="voice-sel" autocomplete="off" spellcheck="false" placeholder="sk_…" aria-label="Clé API ElevenLabs"><button class="btn small green" data-act="elSaveKey">Enregistrer</button>`) : ''}
+        ${elOn && elKey ? row('🎤', 'Voix ElevenLabs', 'Les voix de votre compte. Pour un français naturel, ajoutez une voix française depuis la bibliothèque ElevenLabs.',
+          `<select id="elVoiceSel" class="voice-sel" aria-label="Voix ElevenLabs"><option value="${esc(S.elVoice)}">${esc(S.elVoiceName || 'Chargement des voix…')}</option></select>
+           <button class="btn small" data-act="elTest">▶ Tester</button>`) : ''}
+        ${elOn && elKey ? row('⚙️', 'Modèle ElevenLabs', 'Qualité : Multilingual v2 · Économique : Flash v2.5 (plus rapide, deux fois moins de crédits)',
+          seg('elModel', ['eleven_multilingual_v2', 'eleven_flash_v2_5'], ['Qualité', 'Économique'])) : ''}
+        ${elOn && elKey ? row('💳', 'Crédits ElevenLabs', '<span id="elQuota">Chargement…</span>', '<button class="btn small" data-act="elClearCache">Vider le cache</button>') : ''}
         ${voices.length ? row('📱', 'Voix de l’appareil', 'Sur iPad, des voix plus naturelles se téléchargent dans Réglages → Accessibilité → Contenu énoncé → Voix → Français (« Premium » ou « Améliorée »)',
           `<select id="voiceSel" class="voice-sel" aria-label="Voix de l’appareil"><option value="">Automatique (la meilleure)</option>${voices.map(v =>
             `<option value="${esc(v.uri)}" ${S.voiceURI === v.uri ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>
@@ -1350,6 +1422,12 @@
       },
       hear: el => Sound.play(el.dataset.v),
       testVoice: el => testVoice(el.dataset.v === 'device'),
+      elSaveKey: saveElevenKey,
+      elDelKey: () => confirmBox('Supprimer la clé ElevenLabs de cet appareil ?', () => {
+        Eleven.setKey(''); toast('Clé supprimée de cet appareil'); settingsScreen(false);
+      }, null, 'Supprimer'),
+      elTest: () => testVoice(),
+      elClearCache: () => Eleven.cacheClear().then(() => { toast('Lectures ElevenLabs effacées de cet appareil'); settingsScreen(false); }),
       toggle: el => {
         const k = el.dataset.k; S[k] = !S[k]; Store.saveSettings(S); Sound.configure(S);
         if (k === 'music') { if (S.music) { unlock(); Sound.playMusic(wantMusic || 'menu'); } else Sound.stopMusic(); }
@@ -1388,6 +1466,9 @@
         if (r.dataset.k === 'voiceRate') testVoice(); else Sound.play('pop');
       });
     });
+    const keyInput = document.getElementById('elKey');
+    if (keyInput) keyInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); saveElevenKey(); } });
+    if (elOn && elKey) loadElevenInfo();
     const voiceSel = document.getElementById('voiceSel');
     if (voiceSel) voiceSel.addEventListener('change', () => {
       S.voiceURI = voiceSel.value; Store.saveSettings(S); Sound.configure(S);
@@ -1453,9 +1534,7 @@
       <p class="sub">Toutes les photos viennent de Wikimedia Commons, sous licence libre. Merci à leurs auteurs !</p>
       <div class="rules">
         ${Sound.voiceInfo().natural ? `<div class="card"><h3>🎙️ Voix de lecture</h3><p>${esc(Sound.voiceInfo().credit)}.
-          <a href="https://github.com/rhasspy/piper" target="_blank" rel="noopener noreferrer">Piper</a> ·
-          <a href="https://datashare.is.ed.ac.uk/handle/10283/2353" target="_blank" rel="noopener noreferrer">corpus SIWIS</a> ·
-          <a href="https://creativecommons.org/licenses/by/4.0/deed.fr" target="_blank" rel="noopener noreferrer">CC BY 4.0</a></p></div>` : ''}
+          Logiciel de synthèse : <a href="https://github.com/rhasspy/piper" target="_blank" rel="noopener noreferrer">Piper</a> (licence MIT).</p></div>` : ''}
         ${byCat.map(({ c, list }) => `
         <div class="card"><h3><span class="emoji">${c.icon}</span> ${esc(c.name)}</h3>
           <div class="credits">${list.map(q => `<a class="credit" href="${esc(q.src)}" target="_blank" rel="noopener noreferrer">

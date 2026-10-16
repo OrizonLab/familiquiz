@@ -1,16 +1,20 @@
 #!/usr/bin/env node
-/* Génère les lectures enregistrées des questions avec la voix libre Piper « fr_FR-siwis-medium » (CC BY 4.0).
+/* Génère les lectures enregistrées des questions avec une voix libre Piper.
  *
- * Usage : node tools/make-voice.js          -> questions du niveau 1 (7-9 ans)
- *         node tools/make-voice.js 1 2      -> niveaux 1 et 2
+ * Usage : node tools/make-voice.js                 -> niveau 1 (7-9 ans), voix enregistrée dans data/voice.js
+ *         node tools/make-voice.js 1 2             -> niveaux 1 et 2
+ *         node tools/make-voice.js 1 --voix=pierre -> change de voix (tout est régénéré)
+ *
+ * Voix disponibles (VOICES ci-dessous) : tom, pierre (hommes), siwis (femme).
+ * La vitesse (length_scale) de chaque voix est calibrée pour ~19 caractères par seconde.
  *
  * Prérequis (non publiés, dans .voice/) :
- *   .voice/piper/piper/piper.exe                  (https://github.com/rhasspy/piper/releases)
- *   .voice/model/fr_FR-siwis-medium.onnx(.json)   (https://huggingface.co/rhasspy/piper-voices)
- *   .voice/node_modules/lamejs                    (npm install --prefix .voice lamejs@1.2.1)
+ *   .voice/piper/piper/piper.exe              (https://github.com/rhasspy/piper/releases)
+ *   .voice/model/<modèle>.onnx(.json)         (https://huggingface.co/rhasspy/piper-voices)
+ *   .voice/node_modules/lamejs                (npm install --prefix .voice lamejs@1.2.1)
  *
  * Sorties : audio/voix/<empreinte>.mp3 (un fichier par texte : question, réponse, lettre A-D)
- *           data/voice.js (liste des enregistrements disponibles, lue par le jeu)
+ *           data/voice.js (voix utilisée et liste des enregistrements disponibles, lue par le jeu)
  * Seuls les textes manquants sont générés ; les enregistrements devenus inutiles sont supprimés.
  */
 const fs = require('fs');
@@ -18,17 +22,40 @@ const path = require('path');
 const vm = require('vm');
 const { spawn } = require('child_process');
 
+const VOICES = {
+  tom: {
+    model: 'fr_FR-tom-medium', scale: 1.06,
+    credit: 'Voix « tom » (Piper, licence AGPLv3, https://git.bksp.space/Tjiho/French-tts-model-piper)'
+  },
+  pierre: {
+    model: 'fr_FR-upmc-medium', speaker: 1, scale: 1.14,
+    credit: 'Voix « pierre » (corpus UPMC Pierre, licence CC BY-SA 4.0), synthèse Piper'
+  },
+  siwis: {
+    model: 'fr_FR-siwis-medium', scale: 1.2,
+    credit: 'Voix « siwis » (corpus SIWIS, Université d’Édimbourg, CC BY 4.0), synthèse Piper'
+  }
+};
+
 const root = path.join(__dirname, '..');
 const V = path.join(root, '.voice');
 const PIPER = path.join(V, 'piper', 'piper', 'piper.exe');
-const MODEL = path.join(V, 'model', 'fr_FR-siwis-medium.onnx');
 const TMP = path.join(V, 'tmp');
 const OUT = path.join(root, 'audio', 'voix');
 const MANIFEST = path.join(root, 'data', 'voice.js');
 const LETTERS = ['A', 'B', 'C', 'D'];
 const SAMPLE = 'Bonjour ! C’est moi qui lirai les questions à voix haute.';
-const levels = process.argv.slice(2).map(Number).filter(n => n >= 1 && n <= 4);
+const args = process.argv.slice(2);
+const levels = args.map(Number).filter(n => n >= 1 && n <= 4);
 if (!levels.length) levels.push(1);
+
+// Voix : celle demandée, sinon celle déjà utilisée (data/voice.js), sinon siwis.
+const previous = (() => { try { return (fs.readFileSync(MANIFEST, 'utf8').match(/voiceId: '([a-z]+)'/) || [])[1]; } catch (e) { return null; } })();
+const voiceId = ((args.find(a => a.startsWith('--voix=')) || '').slice(7)) || previous || 'siwis';
+const VOICE = VOICES[voiceId];
+if (!VOICE) { console.error('Voix inconnue : ' + voiceId + ' (au choix : ' + Object.keys(VOICES).join(', ') + ')'); process.exit(1); }
+const MODEL = path.join(V, 'model', VOICE.model + '.onnx');
+const SIGNATURE = `${VOICE.model}#${VOICE.speaker ?? ''}@${VOICE.scale}`;
 
 for (const f of [PIPER, MODEL, path.join(V, 'node_modules', 'lamejs', 'lame.all.js')]) {
   if (!fs.existsSync(f)) { console.error('Fichier manquant : ' + f + '\nVoir l’en-tête de ce script.'); process.exit(1); }
@@ -111,6 +138,13 @@ function readWav(file) {
   }
   return { rate, data };
 }
+// Ramène les voix en 44,1 kHz à 22,05 kHz (moyenne de deux échantillons) : fichiers deux fois plus légers.
+function to22k(data, rate) {
+  if (rate !== 44100) return { data, rate };
+  const out = new Int16Array(data.length >> 1);
+  for (let i = 0; i < out.length; i++) out[i] = (data[2 * i] + data[2 * i + 1]) >> 1;
+  return { data: out, rate: 22050 };
+}
 // Retire les silences du début et de la fin (on garde 40 ms de marge).
 function trim(s, rate) {
   const thr = 300, pad = Math.round(rate * 0.04);
@@ -134,12 +168,21 @@ function toMp3(samples, rate) {
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
   fs.mkdirSync(TMP, { recursive: true });
+  // Autre voix ou autre vitesse que la dernière fois : on repart de zéro.
+  const prevSig = (() => { try { return (fs.readFileSync(MANIFEST, 'utf8').match(/signature: '([^']+)'/) || [])[1]; } catch (e) { return null; } })();
+  if (prevSig !== SIGNATURE) {
+    const old = fs.readdirSync(OUT).filter(x => x.endsWith('.mp3'));
+    old.forEach(x => fs.unlinkSync(path.join(OUT, x)));
+    if (old.length) console.log(`Nouvelle voix ou vitesse (${voiceId}) : ${old.length} anciens enregistrements supprimés.`);
+  }
   const todo = [...wanted].filter(t => !fs.existsSync(path.join(OUT, hash(t) + '.mp3')));
-  console.log(`Niveaux ${levels.join(', ')} : ${wanted.size} textes, ${todo.length} à générer.`);
+  console.log(`Voix ${voiceId} — niveaux ${levels.join(', ')} : ${wanted.size} textes, ${todo.length} à générer.`);
 
   if (todo.length) {
     await new Promise((resolve, reject) => {
-      const p = spawn(PIPER, ['-m', MODEL, '--json-input', '--length_scale', '1.35', '--sentence_silence', '0.1'], { stdio: ['pipe', 'pipe', 'pipe'] });
+      const pargs = ['-m', MODEL, '--json-input', '--length_scale', String(VOICE.scale), '--sentence_silence', '0.1'];
+      if (VOICE.speaker !== undefined) pargs.push('--speaker', String(VOICE.speaker));
+      const p = spawn(PIPER, pargs, { stdio: ['pipe', 'pipe', 'pipe'] });
       let done = 0;
       p.stdout.on('data', d => {
         done += String(d).split('\n').filter(l => l.trim().endsWith('.wav')).length;
@@ -156,7 +199,7 @@ async function main() {
     for (const t of todo) {
       const wav = path.join(TMP, hash(t) + '.wav');
       if (!fs.existsSync(wav)) { console.warn('  manquant : ' + t); continue; }
-      const { rate, data } = readWav(wav);
+      const w = readWav(wav), { rate, data } = to22k(w.data, w.rate);
       const mp3 = toMp3(trim(data, rate), rate);
       fs.writeFileSync(path.join(OUT, hash(t) + '.mp3'), mp3);
       fs.unlinkSync(wav);
@@ -175,11 +218,12 @@ async function main() {
   const have = fs.readdirSync(OUT).filter(f => f.endsWith('.mp3')).map(f => f.slice(0, -4)).sort();
   const size = have.reduce((s, h) => s + fs.statSync(path.join(OUT, h + '.mp3')).size, 0);
   fs.writeFileSync(MANIFEST, `/* Généré par tools/make-voice.js — ne pas modifier à la main.
- * Lectures enregistrées avec Piper (MIT) et la voix « fr_FR-siwis-medium »,
- * entraînée sur le corpus SIWIS (Université d’Édimbourg), licence CC BY 4.0. */
+ * Lectures enregistrées avec Piper (MIT) — ${VOICE.credit}. */
 window.QUIZ_VOICE = {
-  voice: 'fr_FR-siwis-medium',
-  credit: 'Voix « siwis » (corpus SIWIS, Université d’Édimbourg, CC BY 4.0), synthèse Piper',
+  voiceId: '${voiceId}',
+  voice: '${VOICE.model}',
+  signature: '${SIGNATURE}',
+  credit: ${JSON.stringify(VOICE.credit)},
   sample: ${JSON.stringify(SAMPLE)},
   has: ${JSON.stringify(have.join(' '))}
 };

@@ -4,6 +4,10 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#2a1b5e">
+  <!-- Sécurité : la page ne peut charger que ses propres fichiers, et ne peut contacter qu'ElevenLabs
+       (voix premium optionnelle). Aucun autre serveur ne peut recevoir de données, même en cas de faille. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; media-src 'self' blob: data:; connect-src 'self' https://api.elevenlabs.io; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+  <meta name="referrer" content="no-referrer">
   <title>Famili'Quiz</title>
   <meta name="description" content="Le grand quiz de la famille, adapté à chaque âge.">
 
@@ -62,6 +66,7 @@
 
   <!-- Application -->
   <script src="js/store.js"></script>
+  <script src="js/eleven.js"></script>
   <script src="js/audio.js"></script>
   <script src="js/engine.js"></script>
   <script src="js/badges.js"></script>

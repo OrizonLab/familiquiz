@@ -79,6 +79,7 @@ const Sound = (() => {
   function configure(s) {
     musicOn = s.music; sfxOn = s.sfx; musicVol = s.musicVol; sfxVol = s.sfxVol;
     Object.assign(voiceOpts, { mode: s.voiceMode || 'natural', uri: s.voiceURI || '', rate: s.voiceRate || 1 });
+    if (typeof Eleven !== 'undefined') Eleven.configure({ voice: s.elVoice || '', model: s.elModel || 'eleven_multilingual_v2' });
     pickVoice();
     applyVolumes();
   }
@@ -497,7 +498,24 @@ const Sound = (() => {
     voiceSources = [];
     if (voiceDuckLevel !== 1) voiceDuck(false);
   }
-  // Joue une suite de textes enregistrés avec des pauses ; false si un enregistrement manque.
+  // Enchaîne des sons décodés avec des pauses, puis appelle onEnd (sauf si la lecture a été interrompue).
+  function playBuffers(tok, bufs, parts, rate, onEnd) {
+    let t = ctx.currentTime + 0.05;
+    voiceDuck(true);
+    bufs.forEach((b, i) => {
+      const s = ctx.createBufferSource();
+      s.buffer = b; s.playbackRate.value = rate;
+      s.connect(voiceBus); s.start(t);
+      voiceSources.push(s);
+      t += b.duration / rate + (parts[i].gap || 0) / rate;
+    });
+    voiceTimer = setTimeout(() => {
+      if (tok !== voiceToken) return;
+      voiceSources = []; voiceDuck(false);
+      onEnd && onEnd();
+    }, (t - ctx.currentTime) * 1000);
+  }
+  // Joue une suite de textes enregistrés (voix intégrée) ; false si un enregistrement manque.
   function playClips(parts, onEnd, fallbackText) {
     init();
     if (!ctx || !parts.every(p => hasClip(p.text))) return false;
@@ -506,21 +524,26 @@ const Sound = (() => {
     Promise.all(parts.map(p => loadClip(p.text))).then(bufs => {
       if (tok !== voiceToken) return;
       if (bufs.some(b => !b)) { speakDevice(fallbackText, onEnd); return; } // fichier introuvable : relais
-      const rate = voiceOpts.rate;
-      let t = ctx.currentTime + 0.05;
-      voiceDuck(true);
-      bufs.forEach((b, i) => {
-        const s = ctx.createBufferSource();
-        s.buffer = b; s.playbackRate.value = rate;
-        s.connect(voiceBus); s.start(t);
-        voiceSources.push(s);
-        t += b.duration / rate + (parts[i].gap || 0) / rate;
-      });
-      voiceTimer = setTimeout(() => {
-        if (tok !== voiceToken) return;
-        voiceSources = []; voiceDuck(false);
-        onEnd && onEnd();
-      }, (t - ctx.currentTime) * 1000);
+      playBuffers(tok, bufs, parts, voiceOpts.rate, onEnd);
+    });
+    return true;
+  }
+
+  // Voix premium ElevenLabs : la vitesse est appliquée par ElevenLabs (pas de changement de hauteur).
+  let voiceErrorListener = null;
+  const decode = ab => new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej));
+  function playEleven(parts, onEnd, fallback) {
+    init();
+    if (!ctx || typeof Eleven === 'undefined' || !Eleven.ready()) return false;
+    stopClips(); stopDevice();
+    const tok = voiceToken;
+    Promise.all(parts.map(p => Eleven.tts(p.text, voiceOpts.rate).then(decode))).then(bufs => {
+      if (tok !== voiceToken) return;
+      playBuffers(tok, bufs, parts, 1, onEnd);
+    }).catch(err => {
+      if (tok !== voiceToken) return;
+      if (voiceErrorListener) voiceErrorListener(err);
+      fallback(); // voix intégrée, sinon voix de l'appareil
     });
     return true;
   }
@@ -573,29 +596,39 @@ const Sound = (() => {
   }
 
   // Lit une question puis ses réponses dans l'ordre affiché (« A : … ; B : … »).
+  // Ordre de préférence : ElevenLabs (si choisi et configuré) → voix intégrée → voix de l'appareil.
   function speakQuestion(question, answers, onEnd) {
     const text = question + ' … ' + answers.map((a, i) => LETTERS[i] + ' : ' + a).join(' ; ');
-    if (voiceOpts.mode === 'natural') {
+    const natural = () => {
       const parts = [{ text: question, gap: 0.55 }];
       answers.forEach((a, i) => parts.push({ text: LETTERS[i], gap: 0.12 }, { text: a, gap: 0.42 }));
       if (playClips(parts, onEnd, text)) return;
+      stopClips(); speakDevice(text, onEnd);
+    };
+    if (voiceOpts.mode === 'eleven') {
+      const parts = [{ text: question, gap: 0.5 }, ...answers.map((a, i) => ({ text: LETTERS[i] + ' : ' + a, gap: 0.4 }))];
+      if (playEleven(parts, onEnd, natural)) return;
     }
+    if (voiceOpts.mode === 'eleven' || voiceOpts.mode === 'natural') return natural();
     stopClips();
     speakDevice(text, onEnd);
   }
   // Lit un texte seul (bouton 🔊, test des Réglages).
   function speak(text, onEnd) {
-    if (voiceOpts.mode === 'natural' && playClips([{ text }], onEnd, text)) return;
+    const natural = () => { if (playClips([{ text }], onEnd, text)) return; stopClips(); speakDevice(text, onEnd); };
+    if (voiceOpts.mode === 'eleven' && playEleven([{ text }], onEnd, natural)) return;
+    if (voiceOpts.mode !== 'device') return natural();
     stopClips();
     speakDevice(text, onEnd);
   }
   const stopSpeech = () => { stopClips(); stopDevice(); };
-  const canSpeak = () => clips.size > 0 || HAS_SYNTH;
+  const canSpeak = () => clips.size > 0 || HAS_SYNTH || typeof Eleven !== 'undefined';
 
   return {
     init, configure, playMusic, stopMusic, duck, play, renderTest, current: () => songName,
     speak, speakQuestion, stopSpeech, canSpeak, listVoices, hasClip,
     onVoicesChanged: fn => { voicesListener = fn; },
+    onVoiceError: fn => { voiceErrorListener = fn; },
     voiceInfo: () => ({ natural: clips.size, credit: VOICE ? VOICE.credit : '', sample: VOICE ? VOICE.sample : '' })
   };
 })();

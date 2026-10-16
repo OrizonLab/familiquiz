@@ -133,6 +133,17 @@ Chaque question vue est mémorisée (par joueur et pour toute la famille). Le ti
 
 - **Voix naturelle intégrée** : les questions des 7-9 ans (et leurs réponses) sont **enregistrées** avec la voix libre « siwis » du logiciel [Piper](https://github.com/rhasspy/piper) (corpus SIWIS de l'Université d'Édimbourg, licence CC BY 4.0). Les fichiers sont livrés avec le jeu : **aucun compte, aucune clé, fonctionne hors ligne**. Les réponses sont lues dans l'ordre où elles s'affichent.
 - **Voix de l'appareil** : pour les questions non enregistrées (niveaux 10 ans et plus), ou si on la préfère, le jeu utilise la voix de synthèse de l'appareil. Choix de la voix, bouton **Tester** et **vitesse de lecture** dans *Réglages*.
+- **ElevenLabs (optionnel, compte payant conseillé)** : *Réglages → Voix → ElevenLabs*, puis coller sa clé API, choisir une voix et un modèle (*Qualité* = Multilingual v2, *Économique* = Flash v2.5). Toutes les questions sont alors lues avec cette voix, à la vitesse réglée.
+  - Chaque lecture reçue est **gardée sur l'appareil** : un même texte n'est payé qu'une fois. Compter environ 140 caractères la première fois qu'une question est lue (≈ 90 000 caractères pour lire une fois toutes les questions des 7-9 ans).
+  - Si ElevenLabs ne répond pas (crédits épuisés, clé refusée, pas d'Internet), un message s'affiche et **la voix intégrée prend le relais**.
+
+### 🔐 Sécurité de la clé ElevenLabs
+
+- La clé est enregistrée **uniquement sur l'appareil** où on la saisit, à part des réglages : elle n'est **jamais exportée** dans les sauvegardes, jamais publiée sur GitHub, et n'est affichée que masquée (`•••• 1a2b`).
+- Elle est vérifiée auprès d'ElevenLabs avant d'être gardée ; une clé refusée est effacée aussitôt. « Supprimer la clé » ou « Tout réinitialiser » l'effacent de l'appareil.
+- La page applique une **politique de sécurité (CSP)** : elle ne peut contacter **aucun autre serveur** qu'`api.elevenlabs.io`, ce qui empêche toute fuite de la clé vers un tiers.
+- Seuls les **textes des questions et réponses** partent chez ElevenLabs : jamais de prénom, d'âge ni de score.
+- **Conseillé** : dans ElevenLabs (*Developers → API Keys*), créer une clé dédiée au jeu, limitée à **Text to Speech** (avec **Voices** et **User** en lecture seule pour la liste des voix et l'affichage des crédits), avec un **plafond de crédits**. Même si quelqu'un récupérait la clé sur l'iPad, il ne pourrait que générer de la voix dans la limite fixée.
 - Sur iPad, des voix d'appareil plus naturelles se téléchargent dans *Réglages iOS → Accessibilité → Contenu énoncé → Voix → Français* (« Premium » ou « Améliorée »).
 
 **Regénérer les enregistrements** (après ajout ou modification de questions), sur le PC :
@@ -141,7 +152,7 @@ Chaque question vue est mémorisée (par joueur et pour toute la famille). Le ti
 node tools/make-voice.js
 ```
 
-Pour enregistrer aussi d'autres niveaux : `node tools/make-voice.js 1 2` (environ 20 Mo de plus par niveau). Le script ne génère que ce qui manque, supprime les enregistrements devenus inutiles et met à jour `data/voice.js`. Il a besoin, dans le dossier local `.voice/` (non publié), de Piper pour Windows, du modèle `fr_FR-siwis-medium` et de l'encodeur MP3 `lamejs` : voir l'en-tête de `tools/make-voice.js`.
+Pour enregistrer aussi d'autres niveaux : `node tools/make-voice.js 1 2` (environ 20 Mo de plus par niveau). Pour changer de voix : `--voix=siwis` (femme, par défaut), `--voix=pierre` ou `--voix=tom` (hommes) ; tout est alors réenregistré. Le script ne génère que ce qui manque, supprime les enregistrements devenus inutiles et met à jour `data/voice.js`. Il a besoin, dans le dossier local `.voice/` (non publié), de Piper pour Windows, du modèle `fr_FR-siwis-medium` et de l'encodeur MP3 `lamejs` : voir l'en-tête de `tools/make-voice.js`.
 
 ## 🎵 Sons
 

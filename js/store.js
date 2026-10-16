@@ -38,6 +38,9 @@ const Store = (() => {
     voiceMode: 'natural', // natural : voix enregistrée intégrée (Piper) | device : voix de l'appareil
     voiceURI: '',       // voix de l'appareil choisie (vide = la meilleure trouvée)
     voiceRate: 1,       // vitesse de lecture (0,8 à 1,25)
+    elVoice: '',        // ElevenLabs : identifiant de la voix choisie (la clé API est stockée à part, voir js/eleven.js)
+    elVoiceName: '',
+    elModel: 'eleven_multilingual_v2',
     autoNext: true,     // passage automatique après l'anecdote
     music: true,
     sfx: true,
@@ -139,7 +142,7 @@ const Store = (() => {
   }
   function resetAll() {
     players().forEach(p => remove('seen_' + p.id));
-    ['players', 'history', 'seen_family', 'settings'].forEach(remove);
+    ['players', 'history', 'seen_family', 'settings', 'secret_elevenlabs'].forEach(remove);
   }
 
   return {
