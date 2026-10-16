@@ -8,7 +8,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const root = path.join(__dirname, '..');
-const INCLUDE = ['index.html', 'manifest.webmanifest', 'css', 'js', 'data', 'img', 'icons', 'fonts'];
+const INCLUDE = ['index.html', 'manifest.webmanifest', 'css', 'js', 'data', 'img', 'icons', 'fonts', 'audio'];
 
 function walk(rel) {
   const abs = path.join(root, rel);

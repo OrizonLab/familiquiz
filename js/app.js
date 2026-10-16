@@ -10,7 +10,7 @@
   const COLORS = ['#ff5a5f', '#ff9800', '#f5c400', '#22c55e', '#00b8d4', '#3d8bfd', '#8b5cf6', '#ec4899'];
   const OK_WORDS = ['Bravo !', 'Excellent !', 'Super !', 'Génial !', 'Trop fort !', 'Bien joué !', 'Champion !', 'Magnifique !', 'Bingo !', 'Parfait !'];
   const KO_WORDS = ['Raté !', 'Oups !', 'Dommage !', 'Presque !', 'Pas cette fois !', 'Aïe !'];
-  const HAS_TTS = 'speechSynthesis' in window;
+  const HAS_TTS = Sound.canSpeak();
 
   /* ================= Outils ================= */
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -143,7 +143,7 @@
   const ARROWS = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right' };
   const isBack = e => ['Escape', 'Backspace', 'GoBack', 'BrowserBack'].includes(e.key) || e.keyCode === 10009 || e.keyCode === 461;
   const isPauseKey = e => ['MediaPlayPause', 'Pause', 'MediaPause'].includes(e.key) || e.keyCode === 19;
-  const FOCUSABLE = 'button:not(:disabled), input:not([type=hidden]):not(.hidden), a[href]';
+  const FOCUSABLE = 'button:not(:disabled), input:not([type=hidden]):not(.hidden), select, a[href]';
   let usingKeys = false;
 
   function setKeyMode(on) {
@@ -206,7 +206,7 @@
 
     // Champs de saisie : les flèches gardent leur rôle (curseur, curseur de volume, nombre) sauf pour en sortir.
     if (inField) {
-      const native = t.type === 'number' ? dir === 'up' || dir === 'down' : dir === 'left' || dir === 'right';
+      const native = t.type === 'number' || t.tagName === 'SELECT' ? dir === 'up' || dir === 'down' : dir === 'left' || dir === 'right';
       if (dir && !native) { e.preventDefault(); moveFocus(dir); }
       else if (e.key === 'Escape') t.blur();
       return;
@@ -681,7 +681,7 @@
     const begin = () => {
       if (!T || T.token !== token) return;
       if (readAloud) {
-        Sound.speak(q.q + ' … ' + q.answers.map((a, i) => 'ABCD'[i] + ' : ' + a.t).join(' ; '), () => { if (T && T.token === token) startTimer(); });
+        Sound.speakQuestion(q.q, q.answers.map(a => a.t), () => { if (T && T.token === token) startTimer(); });
       } else {
         later(startTimer, 500);
       }
@@ -1296,11 +1296,22 @@
   }
 
   /* ================= Réglages ================= */
+  // Fait entendre la voix choisie (voix enregistrée, ou voix de l'appareil si device = true).
+  function testVoice(device = false) {
+    unlock();
+    const info = Sound.voiceInfo();
+    if (!device && S.voiceMode === 'natural' && info.sample && Sound.hasClip(info.sample)) Sound.speak(info.sample);
+    else Sound.speak('Bonjour ! Voici la voix de l’appareil qui lira les questions.'); // pas d'enregistrement : voix de l'appareil
+  }
+
   function settingsScreen(anim = true) {
     setTint(null);
     const sw = (key, on) => `<button class="switch ${on ? 'on' : ''}" data-act="toggle" data-k="${key}" aria-label="${key}"></button>`;
     const seg = (key, values, labels) => `<div class="seg">${values.map((v, i) => `<button class="${S[key] === v ? 'on' : ''}" data-act="set" data-k="${key}" data-v="${v}">${labels ? labels[i] : v}</button>`).join('')}</div>`;
     const row = (ic, title, desc, ctrl) => `<div class="set"><span class="emoji" style="font-size:1.8rem">${ic}</span><div class="txt"><b>${title}</b><small>${desc}</small></div>${ctrl}</div>`;
+    const voiceInfo = Sound.voiceInfo(), voices = Sound.listVoices();
+    // Les voix de l'appareil arrivent parfois après l'ouverture de l'écran : on le redessine alors.
+    Sound.onVoicesChanged(() => { if (app.classList.contains('settings-screen')) settingsScreen(false); });
     screen('settings-screen', `
       <div class="topbar"><button class="btn round ghost" data-act="back">←</button><h2>⚙️ Réglages</h2></div>
       <div class="settings">
@@ -1315,6 +1326,16 @@
         ${row('❓', 'Questions par série', 'Nombre de questions par thème et par joueur', seg('perSeries', [5, 8, 10]))}
         ${row('🎭', 'Joker 50/50', 'Un joker par série : retire des mauvaises réponses', sw('jokers', S.jokers))}
         ${HAS_TTS ? row('🗣️', 'Lecture à voix haute', 'La question et les réponses sont lues, le chrono démarre ensuite', seg('tts', ['off', 'young', 'all'], ['Non', '7-9 ans', 'Tous'])) : ''}
+        ${HAS_TTS ? row('🎙️', 'Voix', voiceInfo.natural
+          ? 'Naturelle : voix enregistrée intégrée au jeu (questions des 7-9 ans). Les autres questions utilisent la voix de l’appareil.'
+          : 'Voix de l’appareil', seg('voiceMode', ['natural', 'device'], ['Naturelle', 'Appareil'])) : ''}
+        ${voices.length ? row('📱', 'Voix de l’appareil', 'Sur iPad, des voix plus naturelles se téléchargent dans Réglages → Accessibilité → Contenu énoncé → Voix → Français (« Premium » ou « Améliorée »)',
+          `<select id="voiceSel" class="voice-sel" aria-label="Voix de l’appareil"><option value="">Automatique (la meilleure)</option>${voices.map(v =>
+            `<option value="${esc(v.uri)}" ${S.voiceURI === v.uri ? 'selected' : ''}>${esc(v.name)}</option>`).join('')}</select>
+           <button class="btn small" data-act="testVoice" data-v="device">▶ Tester</button>`) : ''}
+        ${HAS_TTS ? row('🐢', 'Vitesse de lecture', 'Plus lent pour les plus jeunes, plus rapide pour les grands',
+          `<input type="range" min="0.8" max="1.25" step="0.05" value="${S.voiceRate}" data-k="voiceRate"><b id="rateVal" class="rate-val">×${S.voiceRate.toFixed(2).replace('.', ',')}</b>
+           <button class="btn small" data-act="testVoice" data-v="">▶ Tester</button>`) : ''}
         ${row('⏭️', 'Passage automatique', 'Passe à la question suivante après l’anecdote', sw('autoNext', S.autoNext))}
         ${row('💾', 'Sauvegarde des joueurs', 'Exporte / importe joueurs, stats et historique (fichier .json)',
           `<button class="btn small" data-act="export">⬇️ Exporter</button><button class="btn small" data-act="import">⬆️ Importer</button><input type="file" id="importFile" accept=".json,application/json" class="hidden">`)}
@@ -1328,6 +1349,7 @@
         unlock(); music(el.dataset.v); settingsScreen(false);
       },
       hear: el => Sound.play(el.dataset.v),
+      testVoice: el => testVoice(el.dataset.v === 'device'),
       toggle: el => {
         const k = el.dataset.k; S[k] = !S[k]; Store.saveSettings(S); Sound.configure(S);
         if (k === 'music') { if (S.music) { unlock(); Sound.playMusic(wantMusic || 'menu'); } else Sound.stopMusic(); }
@@ -1336,7 +1358,8 @@
       set: el => {
         const k = el.dataset.k, raw = el.dataset.v;
         S[k] = /^\d+$/.test(raw) ? +raw : raw; Store.saveSettings(S);
-        if (k === 'tts' && raw !== 'off') Sound.speak('Bonjour ! Je lirai les questions à voix haute.');
+        if (k === 'voiceMode') Sound.configure(S);
+        if ((k === 'tts' && raw !== 'off') || k === 'voiceMode') testVoice();
         settingsScreen(false);
       },
       export: () => {
@@ -1356,8 +1379,19 @@
     }, null, { anim });
 
     app.querySelectorAll('input[type=range]').forEach(r => {
-      r.addEventListener('input', () => { S[r.dataset.k] = +r.value; Sound.configure(S); });
-      r.addEventListener('change', () => { Store.saveSettings(S); Sound.play('pop'); });
+      r.addEventListener('input', () => {
+        S[r.dataset.k] = +r.value; Sound.configure(S);
+        if (r.dataset.k === 'voiceRate') document.getElementById('rateVal').textContent = '×' + S.voiceRate.toFixed(2).replace('.', ',');
+      });
+      r.addEventListener('change', () => {
+        Store.saveSettings(S);
+        if (r.dataset.k === 'voiceRate') testVoice(); else Sound.play('pop');
+      });
+    });
+    const voiceSel = document.getElementById('voiceSel');
+    if (voiceSel) voiceSel.addEventListener('change', () => {
+      S.voiceURI = voiceSel.value; Store.saveSettings(S); Sound.configure(S);
+      testVoice(true);
     });
     document.getElementById('importFile').addEventListener('change', e => {
       const file = e.target.files[0];
@@ -1407,7 +1441,7 @@
         <div class="card"><h3>🏅 Badges et rangs</h3>
           <p>Chaque partie rapporte de l’<b>expérience (XP)</b> : on passe de ${Badges.RANKS[0].icon} ${Badges.RANKS[0].name} à ${Badges.RANKS[Badges.RANKS.length - 1].icon} ${Badges.RANKS[Badges.RANKS.length - 1].name}.</p>
           <p>${Badges.LIST.length} <b>badges</b> sont à collectionner (séries, victoires, expert de chaque thème, réflexes…). Retrouve ta collection dans ton profil.</p></div>
-        ${Engine.photos.length ? `<div class="center"><button class="btn" data-act="credits">📷 Crédits des photos</button></div>` : ''}
+        ${Engine.photos.length ? `<div class="center"><button class="btn" data-act="credits">📷 Crédits des photos et de la voix</button></div>` : ''}
       </div>`,
     { back: home, credits: creditsScreen });
   }
@@ -1417,7 +1451,12 @@
     screen('rules-screen', `
       <div class="topbar"><button class="btn round ghost" data-act="back">←</button><h2>📷 Crédits des photos</h2></div>
       <p class="sub">Toutes les photos viennent de Wikimedia Commons, sous licence libre. Merci à leurs auteurs !</p>
-      <div class="rules">${byCat.map(({ c, list }) => `
+      <div class="rules">
+        ${Sound.voiceInfo().natural ? `<div class="card"><h3>🎙️ Voix de lecture</h3><p>${esc(Sound.voiceInfo().credit)}.
+          <a href="https://github.com/rhasspy/piper" target="_blank" rel="noopener noreferrer">Piper</a> ·
+          <a href="https://datashare.is.ed.ac.uk/handle/10283/2353" target="_blank" rel="noopener noreferrer">corpus SIWIS</a> ·
+          <a href="https://creativecommons.org/licenses/by/4.0/deed.fr" target="_blank" rel="noopener noreferrer">CC BY 4.0</a></p></div>` : ''}
+        ${byCat.map(({ c, list }) => `
         <div class="card"><h3><span class="emoji">${c.icon}</span> ${esc(c.name)}</h3>
           <div class="credits">${list.map(q => `<a class="credit" href="${esc(q.src)}" target="_blank" rel="noopener noreferrer">
             <img src="${esc(q.img)}" alt="" loading="lazy"><span>${esc(q.cr)}</span></a>`).join('')}</div></div>`).join('')}</div>`,

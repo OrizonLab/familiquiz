@@ -3,9 +3,10 @@
  * percussions légères (claquements de doigts, shaker) et réverbération.
  */
 const Sound = (() => {
-  let ctx = null, master, musicBus, musicTone, leadBus, sfxBus, reverb, noiseBuf;
+  let ctx = null, master, musicBus, musicTone, leadBus, sfxBus, voiceBus, reverb, noiseBuf;
   let musicOn = true, sfxOn = true, musicVol = 0.55, sfxVol = 0.8;
-  let duckLevel = 1;
+  let duckLevel = 1, voiceDuckLevel = 1;
+  const voiceOpts = { mode: 'natural', uri: '', rate: 1 };
 
   /* ---------- Graphe audio ---------- */
   // Réponse impulsionnelle synthétique : bruit stéréo qui s'éteint en ~2,4 s (salle chaleureuse).
@@ -48,6 +49,9 @@ const Sound = (() => {
     const wet = c.createGain(); wet.gain.value = 0.22;
     leadBus.connect(delay); delay.connect(dlp); dlp.connect(fb); fb.connect(delay); dlp.connect(wet); wet.connect(musicBus);
 
+    // Voix enregistrée : sortie directe, sans réverbération
+    voiceBus = c.createGain(); voiceBus.gain.value = 1.15; voiceBus.connect(master);
+
     // Bruitages : sortie directe + un peu de réverbération
     sfxBus = c.createGain(); sfxBus.connect(master);
     const sfxSend = c.createGain(); sfxSend.gain.value = 0.18;
@@ -69,11 +73,13 @@ const Sound = (() => {
   }
   function applyVolumes() {
     if (!ctx || !musicBus) return;
-    musicBus.gain.setTargetAtTime(musicOn ? musicVol * duckLevel : 0, ctx.currentTime, 0.12);
+    musicBus.gain.setTargetAtTime(musicOn ? musicVol * duckLevel * voiceDuckLevel : 0, ctx.currentTime, 0.12);
     sfxBus.gain.setTargetAtTime(sfxOn ? sfxVol : 0, ctx.currentTime, 0.02);
   }
   function configure(s) {
     musicOn = s.music; sfxOn = s.sfx; musicVol = s.musicVol; sfxVol = s.sfxVol;
+    Object.assign(voiceOpts, { mode: s.voiceMode || 'natural', uri: s.voiceURI || '', rate: s.voiceRate || 1 });
+    pickVoice();
     applyVolumes();
   }
 
@@ -436,7 +442,7 @@ const Sound = (() => {
   // Sound.renderTest('menu', 12) → { peak, rms } sans rien jouer à voix haute.
   async function renderTest(name, seconds = 10) {
     stopMusic(); // le graphe est temporairement remplacé : rien ne doit jouer pendant le rendu
-    const saved = { ctx, master, musicBus, musicTone, leadBus, sfxBus, reverb, noiseBuf, song };
+    const saved = { ctx, master, musicBus, musicTone, leadBus, sfxBus, voiceBus, reverb, noiseBuf, song };
     const off = new OfflineAudioContext(2, Math.ceil(44100 * seconds), 44100);
     buildGraph(off);
     musicBus.gain.value = 0.55; sfxBus.gain.value = 0.8;
@@ -448,7 +454,7 @@ const Sound = (() => {
       fx[name]();
     }
     const buf = await off.startRendering();
-    ({ ctx, master, musicBus, musicTone, leadBus, sfxBus, reverb, noiseBuf, song } = saved);
+    ({ ctx, master, musicBus, musicTone, leadBus, sfxBus, voiceBus, reverb, noiseBuf, song } = saved);
     let peak = 0, sum = 0, n = 0;
     for (let ch = 0; ch < buf.numberOfChannels; ch++) {
       const d = buf.getChannelData(ch);
@@ -457,23 +463,99 @@ const Sound = (() => {
     return { peak: +peak.toFixed(3), rms: +Math.sqrt(sum / n).toFixed(4) };
   }
 
-  /* ---------- Lecture vocale des questions ---------- */
-  let voice = null;
-  function pickVoice() {
-    if (!('speechSynthesis' in window)) return;
-    const vs = speechSynthesis.getVoices().filter(v => /^fr/i.test(v.lang));
-    voice = vs.find(v => /google|natural|online/i.test(v.name)) || vs[0] || null;
+  /* ---------- Lecture vocale ---------- */
+  // 1) Voix enregistrée intégrée (Piper « siwis ») : fichiers audio/voix/<empreinte>.mp3, listés dans data/voice.js.
+  // 2) Sinon, voix de synthèse de l'appareil (au choix dans les Réglages).
+  const VOICE = window.QUIZ_VOICE || null;
+  const clips = new Set(VOICE && VOICE.has ? VOICE.has.split(' ') : []);
+  const LETTERS = ['A', 'B', 'C', 'D'];
+  function vhash(s) { // identique à tools/make-voice.js et js/engine.js
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
   }
-  if ('speechSynthesis' in window) { pickVoice(); speechSynthesis.onvoiceschanged = pickVoice; }
+  const hasClip = text => clips.has(vhash(text));
+  const clipCache = new Map();
+  function loadClip(text) {
+    const h = vhash(text);
+    if (!clipCache.has(h)) {
+      clipCache.set(h, fetch('audio/voix/' + h + '.mp3')
+        .then(r => (r.ok ? r.arrayBuffer() : null))
+        .then(ab => ab && new Promise((res, rej) => ctx.decodeAudioData(ab, res, rej)))
+        .catch(() => null)
+        .then(b => { if (!b) clipCache.delete(h); return b; }));
+    }
+    return clipCache.get(h);
+  }
+
+  let voiceSources = [], voiceToken = 0, voiceTimer = null;
+  function voiceDuck(on) { voiceDuckLevel = on ? 0.5 : 1; applyVolumes(); }
+  function stopClips() {
+    voiceToken++;
+    clearTimeout(voiceTimer);
+    voiceSources.forEach(s => { try { s.stop(); } catch (e) { /* déjà arrêtée */ } });
+    voiceSources = [];
+    if (voiceDuckLevel !== 1) voiceDuck(false);
+  }
+  // Joue une suite de textes enregistrés avec des pauses ; false si un enregistrement manque.
+  function playClips(parts, onEnd, fallbackText) {
+    init();
+    if (!ctx || !parts.every(p => hasClip(p.text))) return false;
+    stopClips(); stopDevice();
+    const tok = voiceToken;
+    Promise.all(parts.map(p => loadClip(p.text))).then(bufs => {
+      if (tok !== voiceToken) return;
+      if (bufs.some(b => !b)) { speakDevice(fallbackText, onEnd); return; } // fichier introuvable : relais
+      const rate = voiceOpts.rate;
+      let t = ctx.currentTime + 0.05;
+      voiceDuck(true);
+      bufs.forEach((b, i) => {
+        const s = ctx.createBufferSource();
+        s.buffer = b; s.playbackRate.value = rate;
+        s.connect(voiceBus); s.start(t);
+        voiceSources.push(s);
+        t += b.duration / rate + (parts[i].gap || 0) / rate;
+      });
+      voiceTimer = setTimeout(() => {
+        if (tok !== voiceToken) return;
+        voiceSources = []; voiceDuck(false);
+        onEnd && onEnd();
+      }, (t - ctx.currentTime) * 1000);
+    });
+    return true;
+  }
+
+  // Voix de l'appareil
+  let voice = null;
+  const HAS_SYNTH = 'speechSynthesis' in window;
+  const rankVoice = v => (/premium|enhanced|améliorée|natural|neural|online/i.test(v.name) ? 4 : 0)
+    + (/google/i.test(v.name) ? 2 : 0) + (/^fr[-_]FR/i.test(v.lang) ? 1 : 0);
+  function listVoices() {
+    if (!HAS_SYNTH) return [];
+    return speechSynthesis.getVoices().filter(v => /^fr/i.test(v.lang))
+      .sort((a, b) => rankVoice(b) - rankVoice(a) || a.name.localeCompare(b.name))
+      .map(v => ({ uri: v.voiceURI, name: v.name, lang: v.lang }));
+  }
+  function pickVoice() {
+    if (!HAS_SYNTH) return;
+    const all = speechSynthesis.getVoices();
+    const fr = all.filter(v => /^fr/i.test(v.lang)).sort((a, b) => rankVoice(b) - rankVoice(a));
+    voice = all.find(v => v.voiceURI === voiceOpts.uri) || fr[0] || null;
+  }
+  let voicesListener = null;
+  if (HAS_SYNTH) {
+    pickVoice();
+    speechSynthesis.onvoiceschanged = () => { pickVoice(); if (voicesListener) voicesListener(); };
+  }
   // Une relecture (bouton 🔊) reprend le rappel en attente : le chrono attend la fin de la dernière lecture.
   let current = null, pending = null;
-  function speak(text, onEnd) {
-    if (!('speechSynthesis' in window)) { onEnd && onEnd(); return; }
+  function speakDevice(text, onEnd) {
+    if (!HAS_SYNTH) { onEnd && onEnd(); return; }
     if (onEnd) pending = onEnd;
     current = null;
     speechSynthesis.cancel();
     const u = new SpeechSynthesisUtterance(text);
-    u.lang = 'fr-FR'; if (voice) u.voice = voice; u.rate = 1.0; u.pitch = 1.05;
+    u.lang = 'fr-FR'; if (voice) u.voice = voice; u.rate = voiceOpts.rate; u.pitch = 1;
     current = u;
     const finish = () => {
       if (u !== current) return; // lecture remplacée ou arrêtée
@@ -482,13 +564,38 @@ const Sound = (() => {
       cb && cb();
     };
     u.onend = finish; u.onerror = finish;
-    setTimeout(finish, 1500 + text.length * 75); // garde-fou si l'événement ne vient jamais
+    setTimeout(finish, (1500 + text.length * 75) / voiceOpts.rate); // garde-fou si l'événement ne vient jamais
     speechSynthesis.speak(u);
   }
-  const stopSpeech = () => {
+  function stopDevice() {
     current = null; pending = null;
-    if ('speechSynthesis' in window) speechSynthesis.cancel();
-  };
+    if (HAS_SYNTH) speechSynthesis.cancel();
+  }
 
-  return { init, configure, playMusic, stopMusic, duck, play, speak, stopSpeech, renderTest, current: () => songName };
+  // Lit une question puis ses réponses dans l'ordre affiché (« A : … ; B : … »).
+  function speakQuestion(question, answers, onEnd) {
+    const text = question + ' … ' + answers.map((a, i) => LETTERS[i] + ' : ' + a).join(' ; ');
+    if (voiceOpts.mode === 'natural') {
+      const parts = [{ text: question, gap: 0.55 }];
+      answers.forEach((a, i) => parts.push({ text: LETTERS[i], gap: 0.12 }, { text: a, gap: 0.42 }));
+      if (playClips(parts, onEnd, text)) return;
+    }
+    stopClips();
+    speakDevice(text, onEnd);
+  }
+  // Lit un texte seul (bouton 🔊, test des Réglages).
+  function speak(text, onEnd) {
+    if (voiceOpts.mode === 'natural' && playClips([{ text }], onEnd, text)) return;
+    stopClips();
+    speakDevice(text, onEnd);
+  }
+  const stopSpeech = () => { stopClips(); stopDevice(); };
+  const canSpeak = () => clips.size > 0 || HAS_SYNTH;
+
+  return {
+    init, configure, playMusic, stopMusic, duck, play, renderTest, current: () => songName,
+    speak, speakQuestion, stopSpeech, canSpeak, listVoices, hasClip,
+    onVoicesChanged: fn => { voicesListener = fn; },
+    voiceInfo: () => ({ natural: clips.size, credit: VOICE ? VOICE.credit : '', sample: VOICE ? VOICE.sample : '' })
+  };
 })();

@@ -35,6 +35,9 @@ const Store = (() => {
     youngBonus: true,   // +5 s (7-9 ans) / +3 s (10-12 ans)
     jokers: true,       // un joker 50/50 par série
     tts: 'young',       // lecture vocale : off | young (7-9 ans) | all
+    voiceMode: 'natural', // natural : voix enregistrée intégrée (Piper) | device : voix de l'appareil
+    voiceURI: '',       // voix de l'appareil choisie (vide = la meilleure trouvée)
+    voiceRate: 1,       // vitesse de lecture (0,8 à 1,25)
     autoNext: true,     // passage automatique après l'anecdote
     music: true,
     sfx: true,

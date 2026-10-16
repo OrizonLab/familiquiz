@@ -103,7 +103,7 @@ node tools/build-sw.js
 - L'âge est enregistré sous forme d'année de naissance : le niveau **évolue tout seul** quand l'enfant grandit.
 - **Difficulté adaptative** (par thème) : un joueur qui réussit très bien reçoit quelques questions du niveau au-dessus (bonus 💪 *Défi* +25 pts), un joueur en difficulté quelques questions plus faciles. Objectif : ~70 % de réussite pour chacun.
 - **Temps bonus** pour les plus jeunes (+5 s pour les 7-9 ans, +3 s pour les 10-12 ans).
-- **Lecture à voix haute** des questions pour les 7-9 ans (réglable : personne / 7-9 ans / tout le monde).
+- **Lecture à voix haute** des questions pour les 7-9 ans (réglable : personne / 7-9 ans / tout le monde), avec une **voix naturelle enregistrée** (voir plus bas).
 
 ## ⭐ Points
 
@@ -128,6 +128,20 @@ node tools/build-sw.js
 ## 🔁 Anti-répétition
 
 Chaque question vue est mémorisée (par joueur et pour toute la famille). Le tirage choisit dans l'ordre : jamais vue par personne → jamais vue par ce joueur → vue il y a le plus longtemps. Une même question n'est jamais posée deux fois dans une partie, et les doublons entre thèmes ont été retirés (`tools/audit.js`).
+
+## 🎙️ Voix de lecture
+
+- **Voix naturelle intégrée** : les questions des 7-9 ans (et leurs réponses) sont **enregistrées** avec la voix libre « siwis » du logiciel [Piper](https://github.com/rhasspy/piper) (corpus SIWIS de l'Université d'Édimbourg, licence CC BY 4.0). Les fichiers sont livrés avec le jeu : **aucun compte, aucune clé, fonctionne hors ligne**. Les réponses sont lues dans l'ordre où elles s'affichent.
+- **Voix de l'appareil** : pour les questions non enregistrées (niveaux 10 ans et plus), ou si on la préfère, le jeu utilise la voix de synthèse de l'appareil. Choix de la voix, bouton **Tester** et **vitesse de lecture** dans *Réglages*.
+- Sur iPad, des voix d'appareil plus naturelles se téléchargent dans *Réglages iOS → Accessibilité → Contenu énoncé → Voix → Français* (« Premium » ou « Améliorée »).
+
+**Regénérer les enregistrements** (après ajout ou modification de questions), sur le PC :
+
+```bash
+node tools/make-voice.js
+```
+
+Pour enregistrer aussi d'autres niveaux : `node tools/make-voice.js 1 2` (environ 20 Mo de plus par niveau). Le script ne génère que ce qui manque, supprime les enregistrements devenus inutiles et met à jour `data/voice.js`. Il a besoin, dans le dossier local `.voice/` (non publié), de Piper pour Windows, du modèle `fr_FR-siwis-medium` et de l'encodeur MP3 `lamejs` : voir l'en-tête de `tools/make-voice.js`.
 
 ## 🎵 Sons
 
@@ -156,6 +170,8 @@ tools/audit.js          détection des doublons et du biais « bonne réponse la
 tools/build-sw.js       génération du service worker
 tools/make-icons.js     génération des icônes PNG
 tools/serve.js          serveur local pour jouer en réseau
+tools/make-voice.js     génération des lectures enregistrées (voix Piper)
+audio/voix/             lectures enregistrées (MP3) · data/voice.js : leur liste
 ```
 
 ## ➕ Ajouter des questions
