@@ -408,7 +408,7 @@
       back: home,
       retry: () => { Remote.stop(); phonesScreen(false); },
       kick: el => Remote.kick(el.dataset.id),
-      stop: () => { Remote.stop(); toast('Manettes arrêtées'); home(); }
+      stop: () => { home(); Remote.stop(); toast('Manettes arrêtées'); } // quitter l'écran d'abord, sinon il relancerait une session
     }, null, { anim });
   }
   Remote.onChange(() => {

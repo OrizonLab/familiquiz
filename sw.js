@@ -1,5 +1,5 @@
 /* Famili'Quiz — service worker (généré par tools/build-sw.js, ne pas modifier à la main) */
-const VERSION = '1e1fd9958b';
+const VERSION = 'af778cf774';
 const CACHE = 'familiquiz-' + VERSION;
 const FILES = ["./",
   "audio/voix/101jdwt.mp3",
