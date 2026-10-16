@@ -1,5 +1,5 @@
 /* Famili'Quiz — service worker (généré par tools/build-sw.js, ne pas modifier à la main) */
-const VERSION = '406337ad8f';
+const VERSION = 'b8055b3922';
 const CACHE = 'familiquiz-' + VERSION;
 const FILES = ["./",
   "css/style.css",

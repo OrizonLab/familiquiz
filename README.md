@@ -131,7 +131,7 @@ Chaque question vue est mémorisée (par joueur et pour toute la famille). Le ti
 
 ## 🎵 Sons
 
-Musique et bruitages **générés en direct** (Web Audio API, aucun fichier audio). Boutons 🎵 / 🔊 en haut à droite. Sur iPhone/iPad, le son fonctionne même en mode silencieux (iOS 16.4+).
+Musique et bruitages **générés en direct** (Web Audio API, aucun fichier audio) : piano électrique, marimba, clochettes, nappes de cordes, basse ronde et percussions légères, avec réverbération. Musique douce à l’accueil, plus rythmée pendant la partie (et atténuée pendant les questions). On peut les écouter dans *Réglages*. Boutons 🎵 / 🔊 en haut à droite. Sur iPhone/iPad, le son fonctionne même en mode silencieux (iOS 16.4+).
 
 ## 🗂️ Structure
 

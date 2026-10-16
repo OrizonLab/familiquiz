@@ -1304,8 +1304,12 @@
     screen('settings-screen', `
       <div class="topbar"><button class="btn round ghost" data-act="back">←</button><h2>⚙️ Réglages</h2></div>
       <div class="settings">
-        ${row('🎵', 'Musique', 'Ambiance musicale entraînante', `<input type="range" min="0" max="1" step="0.05" value="${S.musicVol}" data-k="musicVol">${sw('music', S.music)}`)}
+        ${row('🎵', 'Musique', 'Ambiance douce à l’accueil, plus rythmée pendant la partie', `<input type="range" min="0" max="1" step="0.05" value="${S.musicVol}" data-k="musicVol">${sw('music', S.music)}`)}
+        ${row('🎧', 'Écouter les musiques', 'Pour régler le volume avant de jouer',
+          `<div class="seg">${[['menu', 'Accueil'], ['game', 'Partie']].map(([v, l]) => `<button class="${Sound.current() === v ? 'on' : ''}" data-act="listen" data-v="${v}">${l}</button>`).join('')}</div>`)}
         ${row('🔊', 'Bruitages', 'Tic-tac, bonnes et mauvaises réponses…', `<input type="range" min="0" max="1" step="0.05" value="${S.sfxVol}" data-k="sfxVol">${sw('sfx', S.sfx)}`)}
+        ${row('🔔', 'Écouter les bruitages', 'Bonne réponse, mauvaise réponse, chrono',
+          `<div class="seg">${[['correct', '✅'], ['wrong', '❌'], ['tick', '⏱️'], ['tickUrgent', '⏰'], ['timeout', '⌛']].map(([v, l]) => `<button data-act="hear" data-v="${v}" data-quiet="1" title="${v}">${l}</button>`).join('')}</div>`)}
         ${row('⏱️', 'Temps par question', 'Durée du compte à rebours', seg('time', [8, 10, 12, 15, 20], ['8 s', '10 s', '12 s', '15 s', '20 s']))}
         ${row('🐣', 'Temps bonus pour les plus jeunes', '+5 s pour les 7-9 ans, +3 s pour les 10-12 ans (le temps de lire)', sw('youngBonus', S.youngBonus))}
         ${row('❓', 'Questions par série', 'Nombre de questions par thème et par joueur', seg('perSeries', [5, 8, 10]))}
@@ -1319,6 +1323,11 @@
       </div>`,
     {
       back: home,
+      listen: el => {
+        if (!S.music) { S.music = true; Store.saveSettings(S); Sound.configure(S); refreshSoundBar(); }
+        unlock(); music(el.dataset.v); settingsScreen(false);
+      },
+      hear: el => Sound.play(el.dataset.v),
       toggle: el => {
         const k = el.dataset.k; S[k] = !S[k]; Store.saveSettings(S); Sound.configure(S);
         if (k === 'music') { if (S.music) { unlock(); Sound.playMusic(wantMusic || 'menu'); } else Sound.stopMusic(); }
